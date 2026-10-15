@@ -63,7 +63,7 @@ const schema = z
     META_ADS_WRITE_ENABLED: bool(false),
     GOOGLE_ADS_WRITE_ENABLED: bool(false),
 
-    LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+    LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production') {
