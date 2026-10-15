@@ -116,13 +116,12 @@ See [SECURITY.md](SECURITY.md) for the implemented vs pending list.
 
 ## Acceptance criteria (PRD §23)
 
-### Foundation
-- [ ] Can log in
-- [ ] Can create a brand
-- [ ] Can switch brand
-- [ ] No data leakage between brands (automated tests)
-- [ ] System runs via Docker (infra containers; app images untested)
-- [ ] PostgreSQL migrations pass
+### Foundation — verified on production 2026-10-15
+- [x] Can log in
+- [x] Can create a brand
+- [x] Can switch brand
+- [x] No data leakage between brands (automated tests + live probe)
+- [x] System runs via Docker (infra containers; app under systemd; app images untested)
+- [x] PostgreSQL migrations pass
 
-These boxes are ticked in [../PROGRESS.md](../PROGRESS.md) only after being
-exercised on the real server.
+Details and evidence in [../PROGRESS.md](../PROGRESS.md).

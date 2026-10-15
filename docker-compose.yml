@@ -39,7 +39,7 @@ services:
       retries: 10
 
   storage:
-    image: versity/versitygw:latest
+    image: versity/versitygw:v1.9.0
     restart: unless-stopped
     command: ["posix", "/data"]
     environment:

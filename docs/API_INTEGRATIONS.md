@@ -42,7 +42,7 @@ are taken from official documentation at implementation time, never guessed.
 
 | Provider | Kind | Phase | Status | Verified |
 | --- | --- | --- | --- | --- |
-| S3-compatible storage (Versity S3 Gateway; any S3 works) | Storage | 1 | **Implemented** (`S3Storage`: ensureBucket/put/get/delete/head/presign) | Pending — ticked in PROGRESS.md once an upload round-trips on the server |
+| S3-compatible storage (Versity S3 Gateway v1.9.0; any S3 works) | Storage | 1 | **Implemented** (`S3Storage`: ensureBucket/put/get/delete/head/presign) | **Verified 2026-10-15** on production: upload → download bytes identical, cross-brand 404, anonymous 401 |
 | In-memory storage | Storage (tests only) | 1 | Implemented, clearly test-only (`STORAGE_DRIVER=memory`) | — |
 | Anthropic Claude | AI text (strategy, QA, analysis) | 2 | Not started | — |
 | OpenAI GPT | AI text (Hebrew copy) | 2 | Not started | — |
