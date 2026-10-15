@@ -27,10 +27,11 @@ coverage/
 npm-debug.log*
 logs/
 
-# local data (docker volumes mounted into repo, uploads, renders)
-data/
-storage/
-tmp/
+# local data at the repo root only (docker volumes, uploads, renders) —
+# anchored so source folders like packages/core/src/storage are never ignored
+/data/
+/storage/
+/tmp/
 
 # OS / editor
 .DS_Store

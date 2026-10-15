@@ -2,7 +2,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { ZodError } from 'zod';
-import type { ZodSchema } from 'zod';
+import type { z } from 'zod';
 import {
   SESSION_COOKIE,
   UnauthorizedError,
@@ -73,18 +73,19 @@ export async function requireApiBrand(req: NextRequest, brandId: string): Promis
   return resolveBrandContext(actor, brandId, requestMetaFrom(req));
 }
 
-export async function parseJson<T>(req: NextRequest, schema: ZodSchema<T>): Promise<T> {
+/** Parse the JSON body; returns the schema's OUTPUT type (defaults/coercions applied). */
+export async function parseJson<S extends z.ZodTypeAny>(req: NextRequest, schema: S): Promise<z.output<S>> {
   let body: unknown;
   try {
     body = await req.json();
   } catch {
     throw new ValidationError('Request body must be valid JSON');
   }
-  return schema.parse(body);
+  return schema.parse(body) as z.output<S>;
 }
 
-export function parseQuery<T>(req: NextRequest, schema: ZodSchema<T>): T {
-  return schema.parse(Object.fromEntries(req.nextUrl.searchParams.entries()));
+export function parseQuery<S extends z.ZodTypeAny>(req: NextRequest, schema: S): z.output<S> {
+  return schema.parse(Object.fromEntries(req.nextUrl.searchParams.entries())) as z.output<S>;
 }
 
 export function ok<T>(data: T, init?: ResponseInit): NextResponse {
