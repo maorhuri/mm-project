@@ -26,7 +26,7 @@ tracks leads and reports — for any number of brands, under the owner's approva
 ## Stack
 
 Next.js (App Router) · React · TypeScript (strict) · Tailwind CSS · shadcn/ui-style components ·
-Node.js · PostgreSQL + Prisma · Redis + BullMQ · S3-compatible storage (MinIO) ·
+Node.js · PostgreSQL + Prisma · Redis + BullMQ · S3-compatible storage (Versity S3 Gateway) ·
 Docker Compose · Nginx · Cloudflare · FFmpeg / Remotion (video phases).
 
 ## Repository layout
@@ -45,12 +45,12 @@ docs/         Architecture and operations documentation
 
 ## Quick start (development)
 
-Requirements: Node 22, Docker (for Postgres/Redis/MinIO).
+Requirements: Node 22, Docker (for Postgres / Redis / S3 gateway).
 
 ```bash
 cp .env.example .env            # fill in secrets (openssl rand -base64 48)
 npm install
-npm run infra:up                # postgres + redis + minio (127.0.0.1 only)
+npm run infra:up                # postgres + redis + s3 gateway (127.0.0.1 only)
 npm run db:migrate              # apply migrations (dev)
 npm run db:seed                 # admin user + MVN / CONTINUO demo brands
 npm run dev                     # web on http://localhost:3000

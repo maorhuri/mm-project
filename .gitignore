@@ -14,7 +14,6 @@ dist/
 build/
 .turbo/
 *.tsbuildinfo
-next-env.d.ts
 
 # prisma
 packages/db/generated/

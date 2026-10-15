@@ -35,7 +35,7 @@ fi
 chmod 600 /root/.ssh/config
 touch /root/.ssh/known_hosts
 ssh-keyscan -t ed25519 github.com 2>/dev/null >> /root/.ssh/known_hosts
-ssh -T git@github.com 2>&1 | head -1 || true
+ssh -n -T git@github.com 2>&1 | head -1 || true
 
 log "Clone repo"
 if [ ! -d "$BASE/repo/.git" ]; then
@@ -74,7 +74,7 @@ REDIS_URL=redis://127.0.0.1:6379
 S3_ENDPOINT=http://127.0.0.1:9000
 S3_REGION=us-east-1
 S3_BUCKET=mm-media
-S3_ACCESS_KEY=mm-minio
+S3_ACCESS_KEY=mm-storage
 S3_SECRET_KEY=${S3_PW}
 S3_FORCE_PATH_STYLE=true
 MEDIA_PUBLIC_BASE_URL=

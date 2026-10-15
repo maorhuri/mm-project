@@ -1,0 +1,553 @@
+// MM Marketing OS — PostgreSQL schema (Phase 1 foundation)
+// Conventions: snake_case tables/columns via @map, UUID v7 primary keys,
+// every brand-scoped table carries brand_id (tenant key) and is accessed
+// through the tenant-scoped client in src/tenant.ts.
+// Future-phase tables are designed in docs/DATABASE_SCHEMA.md and added
+// per phase via migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// Identity & access
+// ===========================================================================
+
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  isSuperAdmin Boolean   @default(false) @map("is_super_admin")
+  isActive     Boolean   @default(true) @map("is_active")
+  mfaEnabled   Boolean   @default(false) @map("mfa_enabled")
+  mfaSecretEnc String?   @map("mfa_secret_enc") // AES-256-GCM encrypted TOTP secret
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  memberships        Membership[]
+  brandAccess        BrandAccess[]
+  auditLogs          AuditLog[]       @relation("AuditActor")
+  uploadedMedia      MediaAsset[]     @relation("MediaUploader")
+  requestedApprovals Approval[]       @relation("ApprovalRequester")
+  decidedApprovals   Approval[]       @relation("ApprovalDecider")
+  approvedKnowledge  BrandKnowledge[] @relation("KnowledgeApprover")
+  notifications      Notification[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tokenHash  String   @unique @map("token_hash") // sha256 of the cookie token
+  userId     String   @map("user_id") @db.Uuid
+  expiresAt  DateTime @map("expires_at")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Organization {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships      Membership[]
+  brands           Brand[]
+  auditLogs        AuditLog[]
+  providerAccounts ProviderAccount[]
+
+  @@map("organizations")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Membership {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  role      OrgRole  @default(MEMBER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+enum BrandRole {
+  BRAND_ADMIN
+  EDITOR
+  VIEWER
+}
+
+/// Per-brand grant. Org OWNER/ADMIN implicitly have BRAND_ADMIN on all org brands;
+/// MEMBER/VIEWER only see brands listed here.
+model BrandAccess {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  brandId   String    @map("brand_id") @db.Uuid
+  role      BrandRole @default(EDITOR)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, brandId])
+  @@index([brandId])
+  @@map("brand_access")
+}
+
+// ===========================================================================
+// Brands (tenants)
+// ===========================================================================
+
+enum BrandStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Brand {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  name        String
+  slug        String
+  status      BrandStatus @default(ACTIVE)
+  industry    String?
+  description String?
+  websiteUrl  String?     @map("website_url")
+  locale      String      @default("he-IL")
+  timezone    String      @default("Asia/Jerusalem")
+  currency    String      @default("ILS")
+  /// Demo brands are labelled as such everywhere in the UI.
+  isDemo      Boolean     @default(false) @map("is_demo")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  org              Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  settings         BrandSettings?
+  assets           BrandAsset[]
+  products         BrandProduct[]
+  knowledge        BrandKnowledge[]
+  competitors      BrandCompetitor[]
+  media            MediaAsset[]
+  approvals        Approval[]
+  access           BrandAccess[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  providerAccounts ProviderAccount[]
+  backgroundJobs   BackgroundJob[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, status])
+  @@map("brands")
+}
+
+enum PublishingMode {
+  MANUAL
+  SEMI_AUTO
+  AUTO
+}
+
+model BrandSettings {
+  id                 String         @id @default(uuid(7)) @db.Uuid
+  brandId            String         @unique @map("brand_id") @db.Uuid
+  /// { primary, secondary, accent, background, foreground } as hex strings
+  colors             Json           @default("{}")
+  /// { heading, body } font family names (must be licensed/uploaded)
+  fonts              Json           @default("{}")
+  /// { voice, style, language, doNots: string[] }
+  tone               Json           @default("{}")
+  /// [{ name, description, painPoints: string[] }]
+  audiences          Json           @default("[]")
+  keywords           String[]       @default([])
+  hashtags           String[]       @default([])
+  ctaPresets         String[]       @default([]) @map("cta_presets")
+  allowedClaims      String[]       @default([]) @map("allowed_claims")
+  forbiddenClaims    String[]       @default([]) @map("forbidden_claims")
+  graphicStyle       String?        @map("graphic_style")
+  publishingMode     PublishingMode @default(SEMI_AUTO) @map("publishing_mode")
+  /// Monthly content targets, e.g. { marketingPosts: 6, professionalPosts: 4, securityPosts: 2, reels: 4 }
+  contentTargets     Json           @default("{}") @map("content_targets")
+  monthlyAdBudgetIls Decimal?       @map("monthly_ad_budget_ils") @db.Decimal(12, 2)
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("brand_settings")
+}
+
+enum BrandAssetType {
+  LOGO_PRIMARY
+  LOGO_SECONDARY
+  LOGO_ICON
+  FONT
+  BRAND_IMAGE
+}
+
+model BrandAsset {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  brandId      String         @map("brand_id") @db.Uuid
+  type         BrandAssetType
+  label        String?
+  mediaAssetId String         @map("media_asset_id") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  brand Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  media MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, type])
+  @@map("brand_assets")
+}
+
+model BrandProduct {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  brandId       String   @map("brand_id") @db.Uuid
+  name          String
+  slug          String
+  category      String?
+  description   String?
+  /// Verified feature bullet points only — the AI must not invent features
+  features      Json     @default("[]")
+  /// Target audiences for this product line
+  audiences     Json     @default("[]")
+  priceFromIls  Decimal? @map("price_from_ils") @db.Decimal(12, 2)
+  pricingNote   String?  @map("pricing_note")
+  url           String?
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, slug])
+  @@index([brandId, isActive])
+  @@map("brand_products")
+}
+
+enum KnowledgeKind {
+  WEBSITE
+  SERVICE_PAGE
+  PRICING
+  FAQ
+  DOCUMENT
+  MANUAL
+  CREATIVE
+  CAMPAIGN_DATA
+}
+
+enum KnowledgeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Brand knowledge base. Only APPROVED entries may be used by AI agents.
+model BrandKnowledge {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  brandId      String          @map("brand_id") @db.Uuid
+  kind         KnowledgeKind
+  status       KnowledgeStatus @default(PENDING)
+  title        String
+  sourceUrl    String?         @map("source_url")
+  content      String
+  approvedById String?         @map("approved_by_id") @db.Uuid
+  approvedAt   DateTime?       @map("approved_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  brand      Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("KnowledgeApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([brandId, status])
+  @@map("brand_knowledge")
+}
+
+model BrandCompetitor {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  brandId    String   @map("brand_id") @db.Uuid
+  name       String
+  websiteUrl String?  @map("website_url")
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@map("brand_competitors")
+}
+
+// ===========================================================================
+// Media library
+// ===========================================================================
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  FONT
+  DOCUMENT
+  OTHER
+}
+
+enum MediaSource {
+  UPLOAD
+  AI_GENERATED
+  RENDERED
+  IMPORTED
+}
+
+model MediaAsset {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  brandId        String      @map("brand_id") @db.Uuid
+  kind           MediaKind
+  source         MediaSource @default(UPLOAD)
+  /// Object key in the S3 bucket; always prefixed with brands/<brandId>/
+  storageKey     String      @unique @map("storage_key")
+  bucket         String
+  mimeType       String      @map("mime_type")
+  sizeBytes      Int         @map("size_bytes")
+  width          Int?
+  height         Int?
+  durationMs     Int?        @map("duration_ms")
+  originalName   String      @map("original_name")
+  title          String?
+  altText        String?     @map("alt_text")
+  tags           String[]    @default([])
+  checksumSha256 String?     @map("checksum_sha256")
+  uploadedById   String?     @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+  deletedAt      DateTime?   @map("deleted_at")
+
+  brand       Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  uploadedBy  User?        @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  brandAssets BrandAsset[]
+
+  @@index([brandId, kind, deletedAt])
+  @@index([brandId, createdAt])
+  @@map("media_assets")
+}
+
+// ===========================================================================
+// Approvals (every publish / spend / costly AI action goes through here)
+// ===========================================================================
+
+enum ApprovalType {
+  CONTENT_POST
+  VIDEO
+  CONTENT_PLAN
+  CAMPAIGN
+  BUDGET
+  AD_CHANGE
+  ACTIVATION
+  AI_HIGH_COST
+  BRAND_KNOWLEDGE
+  OTHER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  SCHEDULED
+  EXECUTED
+  FAILED
+}
+
+model Approval {
+  id               String         @id @default(uuid(7)) @db.Uuid
+  brandId          String         @map("brand_id") @db.Uuid
+  type             ApprovalType
+  status           ApprovalStatus @default(PENDING)
+  title            String
+  summary          String?
+  /// Polymorphic subject (e.g. "media_asset", "brand_knowledge", later "scheduled_post")
+  subjectType      String         @map("subject_type")
+  subjectId        String         @map("subject_id")
+  /// Approval is bound to a specific version; a material change requires a new approval
+  subjectVersion   Int            @default(1) @map("subject_version")
+  payload          Json           @default("{}")
+  estimatedCostIls Decimal?       @map("estimated_cost_ils") @db.Decimal(12, 2)
+  requestedById    String?        @map("requested_by_id") @db.Uuid
+  decidedById      String?        @map("decided_by_id") @db.Uuid
+  decidedAt        DateTime?      @map("decided_at")
+  decisionNote     String?        @map("decision_note")
+  executedAt       DateTime?      @map("executed_at")
+  errorMessage     String?        @map("error_message")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  brand       Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  requestedBy User? @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy   User? @relation("ApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([brandId, status, createdAt])
+  @@index([subjectType, subjectId])
+  @@map("approvals")
+}
+
+// ===========================================================================
+// Integrations registry (credentials encrypted at rest)
+// ===========================================================================
+
+enum ProviderKind {
+  AI_TEXT
+  AI_IMAGE
+  AI_VIDEO
+  AI_TTS
+  META
+  GOOGLE_ADS
+  LINKEDIN
+  GOOGLE_BUSINESS
+  STORAGE
+  OTHER
+}
+
+enum ConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+  EXPIRED
+}
+
+model ProviderAccount {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  orgId             String           @map("org_id") @db.Uuid
+  /// null = organization-wide (e.g. an AI provider key shared by all brands)
+  brandId           String?          @map("brand_id") @db.Uuid
+  provider          String // "openai" | "anthropic" | "google" | "meta" | "google_ads" | ...
+  kind              ProviderKind
+  label             String
+  status            ConnectionStatus @default(DISCONNECTED)
+  externalAccountId String?          @map("external_account_id")
+  scopes            String[]         @default([])
+  /// AES-256-GCM encrypted JSON blob (tokens, refresh tokens, keys)
+  credentialsEnc    String?          @map("credentials_enc")
+  metadata          Json             @default("{}")
+  expiresAt         DateTime?        @map("expires_at")
+  lastSyncAt        DateTime?        @map("last_sync_at")
+  lastError         String?          @map("last_error")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  brand Brand?       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, provider])
+  @@index([brandId])
+  @@map("provider_accounts")
+}
+
+// ===========================================================================
+// Operations: background jobs, audit, notifications
+// ===========================================================================
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// Durable record of worker executions (BullMQ keeps live state in Redis).
+model BackgroundJob {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  brandId    String?   @map("brand_id") @db.Uuid
+  queue      String
+  name       String
+  bullJobId  String?   @map("bull_job_id")
+  /// Idempotency key prevents duplicate side effects (double publish, double spend)
+  idempotencyKey String? @unique @map("idempotency_key")
+  status     JobStatus @default(QUEUED)
+  payload    Json      @default("{}")
+  result     Json?
+  error      String?
+  attempts   Int       @default(0)
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  brand Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([queue, status, createdAt])
+  @@index([brandId, createdAt])
+  @@map("background_jobs")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  orgId       String?  @map("org_id") @db.Uuid
+  brandId     String?  @map("brand_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String // e.g. "brand.create", "media.delete", "approval.approve"
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  before      Json?
+  after       Json?
+  metadata    Json?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  brand Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  actor User?         @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([brandId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+enum NotificationLevel {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model Notification {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  brandId   String?           @map("brand_id") @db.Uuid
+  level     NotificationLevel @default(INFO)
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?         @map("read_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand? @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([brandId, createdAt])
+  @@map("notifications")
+}

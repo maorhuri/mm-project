@@ -30,7 +30,7 @@ for d in "" apps/web apps/worker packages/db; do
 done
 cd "$REL"
 
-log "infra: postgres / redis / minio"
+log "infra: postgres / redis / s3 gateway"
 docker compose -f docker-compose.infra.yml up -d --remove-orphans >/dev/null 2>&1
 PG_USER=$(grep '^POSTGRES_USER=' .env | cut -d= -f2)
 for _ in $(seq 1 30); do
