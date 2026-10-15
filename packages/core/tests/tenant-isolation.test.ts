@@ -46,7 +46,9 @@ describe('tenant isolation', () => {
     // Raw tenant client: even a direct lookup by id cannot cross brands.
     expect(await forBrand(brandA.id).mediaAsset.findUnique({ where: { id: inB.id } })).toBeNull();
     expect(await forBrand(brandA.id).mediaAsset.count()).toBe(1);
-    expect(await forBrand(brandA.id).mediaAsset.findMany({ where: { brandId: brandB.id } })).toHaveLength(0);
+    // A forged brandId in `where` is overridden, not honoured: only brand A rows come back.
+    const forged = await forBrand(brandA.id).mediaAsset.findMany({ where: { brandId: brandB.id } });
+    expect(forged.map((m) => m.brandId)).toEqual([brandA.id]);
     // Unscoped root client sees both — proving the filter comes from the tenant layer.
     expect(await db.mediaAsset.count()).toBe(2);
   });
