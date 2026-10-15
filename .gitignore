@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+.npm/
+
+# env / secrets — NEVER commit real keys
+.env
+.env.*
+!.env.example
+
+# build output
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+packages/db/generated/
+
+# tests / coverage
+coverage/
+.vitest/
+
+# logs
+*.log
+npm-debug.log*
+logs/
+
+# local data (docker volumes mounted into repo, uploads, renders)
+data/
+storage/
+tmp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

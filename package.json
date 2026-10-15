@@ -1,0 +1,40 @@
+{
+  "name": "mm-marketing-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MM Marketing OS — self-hosted, multi-brand AI marketing automation platform",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.18"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@mm/web",
+    "dev:worker": "npm run dev --workspace=@mm/worker",
+    "build": "npm run db:generate && npm run build --workspace=@mm/web && npm run build --workspace=@mm/worker",
+    "start": "npm run start --workspace=@mm/web",
+    "start:worker": "npm run start --workspace=@mm/worker",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run db:generate && npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:isolation": "npm run test:isolation --workspace=@mm/core",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "npm run generate --workspace=@mm/db",
+    "db:migrate": "npm run migrate:dev --workspace=@mm/db",
+    "db:migrate:deploy": "npm run migrate:deploy --workspace=@mm/db",
+    "db:seed": "npm run seed --workspace=@mm/db",
+    "db:studio": "npm run studio --workspace=@mm/db",
+    "db:reset": "npm run reset --workspace=@mm/db",
+    "infra:up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra:down": "docker compose -f docker-compose.infra.yml down",
+    "infra:logs": "docker compose -f docker-compose.infra.yml logs -f"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}
