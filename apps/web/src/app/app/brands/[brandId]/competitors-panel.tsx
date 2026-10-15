@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { createCompetitorAction, deleteCompetitorAction } from '../actions';
 
 export function CompetitorsPanel({ brandId, competitors, canEdit }: { brandId: string; competitors: BrandCompetitor[]; canEdit: boolean }) {

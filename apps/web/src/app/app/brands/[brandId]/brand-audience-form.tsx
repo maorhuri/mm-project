@@ -9,7 +9,7 @@ import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/fo
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { updateBrandAudienceAction } from '../actions';
 
 interface Audience {

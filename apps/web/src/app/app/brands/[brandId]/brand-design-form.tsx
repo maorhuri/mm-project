@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { updateBrandDesignAction } from '../actions';
 
 const COLOR_KEYS: { key: string; label: string }[] = [

@@ -12,7 +12,7 @@ import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/fo
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { formatIls } from '@/lib/format';
 import { deleteProductAction, saveProductAction } from '../actions';
 

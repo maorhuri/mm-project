@@ -5,7 +5,7 @@ import { Check, MessageSquareWarning, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { decideApprovalAction } from './actions';
 
 export function ApprovalDecision({ brandId, approvalId }: { brandId: string; approvalId: string }) {

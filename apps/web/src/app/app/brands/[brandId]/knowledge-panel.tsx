@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { KnowledgeStatusBadge } from '@/components/status-badges';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { formatDateTime } from '@/lib/format';
 import { deleteKnowledgeAction, saveKnowledgeAction } from '../actions';
 

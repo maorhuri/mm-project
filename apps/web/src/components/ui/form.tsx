@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from './button';
 import type { ButtonProps } from './button';
 import { Label } from './label';
-import type { ActionState } from '@/lib/actions';
+import type { ActionState } from '@/lib/action-state';
 import { cn } from '@/lib/utils';
 
 export function SubmitButton({ children, pendingText, ...props }: ButtonProps & { pendingText?: string }) {

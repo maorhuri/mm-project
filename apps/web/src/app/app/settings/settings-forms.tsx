@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { idleState } from '@/lib/actions';
+import { idleState } from '@/lib/action-state';
 import { changePasswordAction, revokeOtherSessionsAction } from './actions';
 
 export function ChangePasswordForm() {
