@@ -17,6 +17,7 @@ import { CompetitorsPanel } from './competitors-panel';
 import { KnowledgePanel } from './knowledge-panel';
 import { LogoPicker } from './logo-picker';
 import { ProductsPanel } from './products-panel';
+import { WebsiteImport } from './website-import';
 
 export const metadata = { title: 'Brand Kit' };
 
@@ -98,7 +99,13 @@ export default async function BrandKitPage({
           <LogoPicker brandId={brandId} assets={kit.assets} images={images.items} disabled={!isAdmin} />
         </TabsContent>
 
-        <TabsContent value="design">
+        <TabsContent value="design" className="flex flex-col gap-6">
+          <WebsiteImport
+            brandId={brandId}
+            websiteUrl={kit.brand.websiteUrl}
+            hasDescription={Boolean(kit.brand.description)}
+            disabled={!isAdmin}
+          />
           <BrandDesignForm brandId={brandId} settings={kit.settings} disabled={!isAdmin} />
         </TabsContent>
 

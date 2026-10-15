@@ -45,6 +45,7 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 | Organizations, memberships, brand access, RBAC gate | ✅ verified (role=BRAND_ADMIN for owner; editor/viewer paths covered by tests) |
 | Brand CRUD, brand switching (cookie), demo labelling | ✅ create verified live; switch UI built |
 | Brand Kit: identity, logos, colors/fonts/style, audiences/tone/claims/keywords, content targets, budget, products, knowledge (with approval), competitors | 🟡 built; products + knowledge verified live via API; forms need a manual click-through |
+| Brand Kit → **ייבוא מהאתר**: analyse the brand website (CSS variables, theme-color, @font-face, Google Fonts, logo candidates, meta description) → suggestions → apply on confirmation. SSRF-guarded fetcher, offline parser tests | 🟡 built 2026-10-15 (owner request) — adversarial review + live verification pending |
 | Media Library: upload (multipart), list/search/filter, edit metadata, delete, access-controlled streaming, S3 storage | ✅ upload/download/auth/isolation verified live; UI grid built |
 | Approval Center: list/filter, approve/reject/changes with notes, handler registry, knowledge side effect | ✅ verified live (PENDING → APPROVED → knowledge APPROVED) |
 | Notifications (in-app), audit log, dashboard overview with live counts | 🟡 built; notification creation covered by tests |

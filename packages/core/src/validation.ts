@@ -135,6 +135,23 @@ export const brandAssetSchema = z.object({
   label: z.string().trim().max(80).nullable().optional(),
 });
 
+export const websiteAnalyzeSchema = z.object({
+  url: z.string().trim().url().max(2000).optional(),
+});
+
+export const brandImportApplySchema = z.object({
+  colors: brandColorsSchema.optional(),
+  fonts: brandFontsSchema.optional(),
+  description: z.string().trim().min(1).max(2000).optional(),
+  logo: z
+    .object({
+      url: z.string().trim().url().max(2000),
+      type: z.enum(['LOGO_PRIMARY', 'LOGO_SECONDARY', 'LOGO_ICON']),
+    })
+    .optional(),
+  sourceUrl: z.string().trim().url().max(2000).optional(),
+});
+
 export const mediaUpdateSchema = z.object({
   title: z.string().trim().max(200).nullable().optional(),
   altText: z.string().trim().max(500).nullable().optional(),
@@ -171,6 +188,8 @@ export type ProductInput = z.infer<typeof productSchema>;
 export type KnowledgeInput = z.infer<typeof knowledgeSchema>;
 export type CompetitorInput = z.infer<typeof competitorSchema>;
 export type BrandAssetInput = z.infer<typeof brandAssetSchema>;
+export type WebsiteAnalyzeInput = z.infer<typeof websiteAnalyzeSchema>;
+export type BrandImportApplyInput = z.infer<typeof brandImportApplySchema>;
 export type MediaUpdateInput = z.infer<typeof mediaUpdateSchema>;
 export type MediaListQuery = z.infer<typeof mediaListQuerySchema>;
 export type ApprovalDecisionInput = z.infer<typeof approvalDecisionSchema>;

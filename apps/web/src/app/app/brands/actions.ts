@@ -2,8 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  analyzeBrandSite,
+  applyBrandImport,
   brandAssetSchema,
   brandCreateSchema,
+  brandImportApplySchema,
   brandSettingsSchema,
   brandUpdateSchema,
   competitorSchema,
@@ -22,6 +25,7 @@ import {
   updateBrandSettings,
   updateKnowledge,
   updateProduct,
+  websiteAnalyzeSchema,
 } from '@mm/core';
 import type { BrandSettingsInput } from '@mm/core';
 import { linesToList, numberOrNull, optionalStr, runAction, str } from '@/lib/actions';
@@ -216,6 +220,27 @@ export async function deleteCompetitorAction(brandId: string, competitorId: stri
     await deleteCompetitor(ctx, competitorId);
     revalidateBrand(brandId);
     return { message: 'המתחרה הוסר' };
+  });
+}
+
+/** Analyse the brand website and return suggestions (nothing is saved). */
+export async function analyzeWebsiteAction(brandId: string, url: string): Promise<ActionResult> {
+  return runAction(async () => {
+    const ctx = await brandContextFor(brandId);
+    const input = websiteAnalyzeSchema.parse({ url: url.trim() || undefined });
+    const analysis = await analyzeBrandSite(ctx, input.url);
+    return { message: 'ניתוח האתר הושלם', data: analysis };
+  });
+}
+
+/** Persist the user's selection from a website analysis. */
+export async function applyWebsiteImportAction(brandId: string, payload: unknown): Promise<ActionResult> {
+  return runAction(async () => {
+    const ctx = await brandContextFor(brandId);
+    const input = brandImportApplySchema.parse(payload);
+    await applyBrandImport(ctx, input);
+    revalidateBrand(brandId);
+    return { message: 'ה-Brand Kit עודכן מהאתר' };
   });
 }
 

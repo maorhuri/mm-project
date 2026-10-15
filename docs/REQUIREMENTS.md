@@ -39,6 +39,9 @@ phase delivers each one. Status legend: ✅ built & verified · 🟡 partial · 
 ### Brand Intelligence / Brand Kit (PRD §5) — ✅ Phase 1
 - Logo upload & selection, colors, licensed fonts, graphic style, audiences,
   keywords, tone, products/services, offers, allowed/forbidden claims. ✅
+- Import from the brand website: colour / font / logo / description suggestions
+  extracted from the site's CSS and metadata, applied only after the user's
+  confirmation (owner request, 2026-10-15). 🟡 built — verification pending
 - Knowledge base learned only from approved sources. ✅ (ingestion from
   website URLs / embeddings ⬜ Phase 2)
 

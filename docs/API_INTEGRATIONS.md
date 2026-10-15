@@ -23,6 +23,8 @@ caller's role on the brand first; a brand the caller cannot access returns 403
 | PATCH/DELETE | `/brands/:brandId/products/:productId` | EDITOR | Update / delete |
 | GET/POST | `/brands/:brandId/knowledge?status=` | VIEWER / EDITOR | List / create (PENDING; `approveNow` for admins) |
 | PATCH/DELETE | `/brands/:brandId/knowledge/:knowledgeId` | EDITOR | Update (re-approval on material change) / delete |
+| POST | `/brands/:brandId/import/analyze` | EDITOR | `{ url? }` → colour / font / logo / description suggestions extracted from the brand website (nothing saved) |
+| POST | `/brands/:brandId/import/apply` | BRAND_ADMIN | `{ colors?, fonts?, description?, logo?: { url, type } }` → saves the selection, imports the logo into the media library |
 | GET | `/brands/:brandId/media?kind=&search=&tag=&page=&pageSize=` | VIEWER | Paginated list with `url` |
 | POST | `/brands/:brandId/media` | EDITOR | `multipart/form-data`: `file` (repeatable), `tags`, `title` |
 | GET/PATCH/DELETE | `/brands/:brandId/media/:mediaId` | VIEWER / EDITOR | Metadata |
@@ -33,6 +35,15 @@ caller's role on the brand first; a brand the caller cannot access returns 403
 
 Validation schemas live in `packages/core/src/validation.ts` and are the same
 ones the UI uses. An OpenAPI document will be generated from them in Phase 2.
+
+### Outbound fetches (website import)
+
+The import feature is the only place the server fetches user-supplied URLs.
+`packages/core/src/net/safe-fetch.ts` allows http(s) only, resolves the host and
+refuses private / loopback / link-local / mapped addresses on **every redirect
+hop**, caps response size (2 MB HTML, 1.5 MB per stylesheet, 3 MB logo) and time
+(≤ 15 s), and identifies itself with a `MM-Marketing-OS` user agent. Results are
+suggestions only; the user chooses what to apply.
 
 ## External integrations — status
 
