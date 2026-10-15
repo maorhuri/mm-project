@@ -26,7 +26,12 @@ model User {
   isSuperAdmin Boolean   @default(false) @map("is_super_admin")
   isActive     Boolean   @default(true) @map("is_active")
   mfaEnabled   Boolean   @default(false) @map("mfa_enabled")
-  mfaSecretEnc String?   @map("mfa_secret_enc") // AES-256-GCM encrypted TOTP secret
+  mfaSecretEnc String?   @map("mfa_secret_enc") // AES-256-GCM encrypted TOTP secret (base32)
+  /// sha256 hashes of unused one-time recovery codes
+  mfaRecoveryCodes String[] @default([]) @map("mfa_recovery_codes")
+  mfaEnrolledAt    DateTime? @map("mfa_enrolled_at")
+  /// Last accepted TOTP time-step — a code is never accepted twice
+  mfaLastUsedStep  Int?      @map("mfa_last_used_step")
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

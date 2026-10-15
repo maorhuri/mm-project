@@ -10,6 +10,8 @@ items are tracked, not hidden.
 | --- | --- |
 | Password storage | argon2id (`@node-rs/argon2`, 19 MiB / t=2 / p=1). Constant-time login path: unknown users still run a verification against a dummy hash. |
 | Sessions | Random 256-bit token in an `httpOnly`, `secure` (prod), `SameSite=Lax` cookie. Only the **sha256 hash** is stored. Sliding expiry (30 days default), expired sessions deleted on sight, revocation per session / all other sessions, password change revokes other sessions. |
+| Two-factor authentication | TOTP per RFC 6238 (SHA1, 6 digits, 30 s) — Google Authenticator / Authy / 1Password compatible, implemented in `packages/core/src/auth/totp.ts` and checked against the RFC test vectors. Secret stored AES-256-GCM encrypted; each accepted time-step is recorded so a code is never accepted twice; ±1 step drift. 8 one-time recovery codes stored as sha256 hashes. Login becomes two-step: password → signed 5-minute challenge cookie (`mm_mfa`, HMAC-SHA256 with `APP_SECRET`) → code → session. Enabling MFA revokes other sessions; disabling requires password + code. `MFA_REQUIRED_FOR_ADMINS=true` forces enrolment for super admins and org OWNER/ADMIN users. |
+| Rate limiting | Redis fixed windows (`packages/core/src/security/rate-limit.ts`): login 30/IP and 10/email per 15 min, MFA 5 attempts per challenge and 30/IP per 15 min — UI and API alike (HTTP 429). Fails open with an error log if Redis is down. |
 | Authorization | Org roles (OWNER/ADMIN/MEMBER/VIEWER) + brand roles (BRAND_ADMIN/EDITOR/VIEWER). `resolveBrandContext()` is the single gate; services call `assertBrandRole()`. Approvals: BRAND_ADMIN only. |
 | Tenant isolation | Server-side, below the service layer: `forBrand()` Prisma extension rewrites every query on tenant models; caller-supplied `brandId` is overridden. Covered by `tests/tenant-isolation.test.ts` and `tests/tenant-scope.test.ts`. Storage keys are brand-prefixed and served only through an authorized route. |
 | Secrets at rest | `APP_ENCRYPTION_KEY` (32 bytes) with AES-256-GCM (`encryptString/encryptJson`) for provider tokens and the TOTP secret column. |
@@ -27,8 +29,8 @@ items are tracked, not hidden.
 
 | Item | Target | Notes |
 | --- | --- | --- |
-| MFA (TOTP) for admins | Phase 2 | Schema columns exist (`mfa_enabled`, `mfa_secret_enc`); enrolment + verification UI to add. |
-| Rate limiting (login, API) | Phase 2 | Redis-backed limiter on `/login`, `/api/v1/auth/login`, uploads. |
+| Rate limiting on uploads and the website import | Phase 2 | Login and MFA are limited; add per-user limits to `POST …/media` and `…/import/analyze`. |
+| MFA reset by a super admin | Phase 2 | Recovery codes cover lock-outs today; an admin reset flow (with audit) is still to add. |
 | User invitations & brand grants UI | Phase 2 | Service exists for listing; invitation flow with expiring tokens to add. |
 | Postgres row-level security | Hardening | Second layer under the Prisma extension. |
 | Webhook signature validation | Phase 4/5 | Meta/Google webhooks must verify `X-Hub-Signature-256` etc. |

@@ -42,6 +42,7 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 | Prisma schema (18 tables) + initial migration | ✅ verified |
 | Tenant-scoped Prisma client (`forBrand`) | ✅ verified (unit + integration + live probe) |
 | Authentication: argon2id, server sessions, login/logout, change password, session revocation | ✅ verified (API); UI forms built, not yet clicked through |
+| **Two-factor authentication (Google Authenticator / TOTP)**: QR enrolment with manual key, 8 one-time recovery codes, two-step login (UI `/login/mfa` + API `/auth/mfa`), replay protection, disable with password+code, regenerate codes, optional `MFA_REQUIRED_FOR_ADMINS` gate; login/MFA rate limiting on Redis | 🟡 built 2026-10-15 (owner request) — RFC 6238 vectors + flow tests written; live verification pending |
 | Organizations, memberships, brand access, RBAC gate | ✅ verified (role=BRAND_ADMIN for owner; editor/viewer paths covered by tests) |
 | Brand CRUD, brand switching (cookie), demo labelling | ✅ create verified live; switch UI built |
 | Brand Kit: identity, logos, colors/fonts/style, audiences/tone/claims/keywords, content targets, budget, products, knowledge (with approval), competitors | 🟡 built; products + knowledge verified live via API; forms need a manual click-through |
@@ -60,9 +61,9 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 ## Known gaps / next steps
 - Manual UI click-through of every Phase 1 screen (owner + Claude); fix anything found.
 - Adversarial static review of the Phase 1 code is running; confirmed findings will be fixed and pushed.
-- MFA (TOTP) enrolment UI — schema ready, flow pending.
 - User invitations and per-brand grant management UI.
-- Rate limiting on login and API.
+- Rate limiting on uploads / website import (login + MFA are limited).
+- Super-admin MFA reset flow.
 - Automated off-box backups.
 - Dockerized app images are untested (systemd deploy is the verified path).
 - Prisma 6 warns that `package.json#prisma` config is deprecated → move to `prisma.config.ts` before Prisma 7.

@@ -168,8 +168,13 @@ export function parseCssColor(value: string): { hex: string; alpha: number } | n
 
 /** Greys, near-white and near-black are "neutral" — never brand accents. */
 export function isNeutral(hex: string): boolean {
+  const n = normalizeHex(hex) ?? '#000000';
+  const r = parseInt(n.slice(1, 3), 16);
+  const g = parseInt(n.slice(3, 5), 16);
+  const b = parseInt(n.slice(5, 7), 16);
+  const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
   const { s, l } = hexToHsl(hex);
-  return s < 0.12 || l > 0.96 || l < 0.05;
+  return chroma < 0.1 || s < 0.12 || l > 0.96 || l < 0.05;
 }
 
 export function hueDistance(a: string, b: string): number {

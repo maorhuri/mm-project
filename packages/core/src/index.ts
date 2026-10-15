@@ -8,6 +8,10 @@ export * from './audit';
 
 export * from './auth/password';
 export * from './auth/session';
+export * from './auth/totp';
+export * from './auth/mfa-challenge';
+export * from './security/rate-limit';
+export * from './services/mfa';
 
 export * from './tenancy/context';
 

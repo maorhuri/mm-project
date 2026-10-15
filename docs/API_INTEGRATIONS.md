@@ -3,7 +3,9 @@
 ## Internal REST API (`/api/v1`)
 
 Authentication: session cookie (`mm_session`) **or** `Authorization: Bearer
-<session token>` obtained from `POST /api/v1/auth/login`. All responses are
+<session token>` obtained from `POST /api/v1/auth/login` (two steps when the
+user has 2FA, see `/auth/mfa`). Rate limits answer **429** with
+`details.retryAfterSec`. All responses are
 JSON: `{ "data": … }` on success, `{ "error": { code, message, details } }` on
 failure (401, 403, 404, 409, 413, 422, 500). Brand-scoped routes resolve the
 caller's role on the brand first; a brand the caller cannot access returns 403
@@ -11,7 +13,8 @@ caller's role on the brand first; a brand the caller cannot access returns 403
 
 | Method | Path | Role | Purpose |
 | --- | --- | --- | --- |
-| POST | `/auth/login` | — | `{ email, password }` → `{ token, expiresAt, user }` (+cookie) |
+| POST | `/auth/login` | — | `{ email, password }` → `{ token, expiresAt, user }` (+cookie). With 2FA enabled: **401** `{ error: { code: "mfa_required", details: { challenge, expiresInSec } } }` |
+| POST | `/auth/mfa` | — | `{ challenge, code }` (6-digit TOTP or recovery code) → `{ token, expiresAt, user, recoveryCodesLeft }` (+cookie). 5 attempts per challenge |
 | POST | `/auth/logout` | any | Revoke current session |
 | GET | `/auth/me` | any | Current user + accessible brands |
 | GET | `/brands` | any | Accessible brands |

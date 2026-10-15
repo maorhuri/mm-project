@@ -106,6 +106,19 @@ const GENERIC_FONTS = new Set([
   'apple color emoji',
   'segoe ui emoji',
   'segoe ui symbol',
+  'noto color emoji',
+  'sfmono-regular',
+  'menlo',
+  'monaco',
+  'consolas',
+  'liberation mono',
+  'courier new',
+  'courier',
+  'georgia',
+  'times new roman',
+  'times',
+  'verdana',
+  'tahoma',
   'inherit',
   'initial',
   'unset',
@@ -113,6 +126,10 @@ const GENERIC_FONTS = new Set([
   'emoji',
   'math',
 ]);
+
+/** Icon/symbol fonts are never brand typography. */
+const ICON_FONT_RE =
+  /(font ?awesome|fontawesome|material (icons|symbols)|icomoon|glyphicons|dashicons|eicons|elementor-icons|fontello|bootstrap-icons|ionicons|feather|simple-line-icons|themify|linearicons|genericons|slick|swiper-icons|woocommerce|wp-|revicons|fa-|icon)/i;
 
 // ---------------------------------------------------------------------------
 // CSS extraction (pure)
@@ -130,9 +147,11 @@ const BRAND_VAR_HINT = /(primary|brand|accent|main|theme|secondary|highlight|cta
 
 function cleanFamily(raw: string): string | null {
   const f = raw.trim().replace(/^["']|["']$/g, '').trim();
-  if (!f || f.length > 60) return null;
+  // Real families have ≥3 characters and letters; 1–2 letter tokens are minifier noise.
+  if (!f || f.length < 3 || f.length > 60 || !/[a-z֐-׿]{2}/i.test(f)) return null;
   if (f.startsWith('var(') || f.includes('{') || f.includes('}')) return null;
   if (GENERIC_FONTS.has(f.toLowerCase())) return null;
+  if (ICON_FONT_RE.test(f)) return null;
   return f;
 }
 
@@ -281,6 +300,15 @@ function suggestColors(colors: ColorCandidate[]): BrandSiteAnalysis['suggestions
   return out;
 }
 
+/** Prefer fonts the site deliberately loads (Google Fonts / @font-face) over stack fallbacks. */
+function suggestFonts(fonts: FontCandidate[]): BrandSiteAnalysis['suggestions']['fonts'] {
+  const deliberate = fonts.filter((f) => f.sources.includes('google-fonts') || f.sources.includes('font-face') || f.score >= 3);
+  const pool = deliberate.length > 0 ? deliberate : fonts;
+  const heading = pool[0]?.family;
+  const body = pool[1]?.family ?? heading;
+  return { heading, body };
+}
+
 export async function analyzeBrandWebsite(requestedUrl: string, options: AnalyzeOptions = {}): Promise<BrandSiteAnalysis> {
   const fetcher = options.fetcher ?? safeFetch;
   const warnings: string[] = [];
@@ -367,18 +395,42 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
 
   // --- logo candidates -----------------------------------------------------
   const logos: LogoCandidate[] = [];
-  const pushLogo = (href: string | undefined, kind: LogoKind) => {
+  const makeCandidate = (href: string | undefined, kind: LogoKind): LogoCandidate | null => {
     const url = abs(base, href);
-    if (!url || logos.some((l) => l.url === url)) return;
+    if (!url || logos.some((l) => l.url === url)) return null;
     const type = resolveMediaType(undefined, new URL(url).pathname);
-    logos.push({ url, kind, width: null, height: null, mimeType: type?.mime ?? null, importable: type?.kind === 'IMAGE' });
+    return { url, kind, width: null, height: null, mimeType: type?.mime ?? null, importable: type?.kind === 'IMAGE' };
+  };
+  const pushLogo = (href: string | undefined, kind: LogoKind) => {
+    const c = makeCandidate(href, kind);
+    if (c) logos.push(c);
   };
   $('link[rel~="apple-touch-icon"][href]').each((_i, el) => pushLogo($(el).attr('href'), 'apple-touch-icon'));
+
+  // <img> logos: rank the brand's own logo above partner/client logos.
+  const origin = new URL(base).origin;
+  const hostLabel = new URL(base).hostname.replace(/^www\./, '').split('.')[0] ?? '';
+  const imgCandidates: { candidate: LogoCandidate; score: number }[] = [];
   $('img').each((_i, el) => {
     const $el = $(el);
     const hint = `${$el.attr('src') ?? ''} ${$el.attr('alt') ?? ''} ${$el.attr('class') ?? ''} ${$el.attr('id') ?? ''}`.toLowerCase();
-    if (hint.includes('logo')) pushLogo($el.attr('src') ?? $el.attr('data-src'), 'img-logo');
+    if (!hint.includes('logo')) return;
+    const candidate = makeCandidate($el.attr('src') ?? $el.attr('data-src'), 'img-logo');
+    if (!candidate) return;
+    let score = 0;
+    if (hostLabel.length >= 2 && hint.includes(hostLabel)) score += 4;
+    if ($el.closest('header, nav, .navbar, .header, [class*="header"], [class*="navbar"], [id*="header"], [class*="brand"]').length) score += 3;
+    if ($el.closest(`a[href="/"], a[href="${origin}"], a[href="${origin}/"]`).length) score += 3;
+    if (/(partner|client|customer|vendor|sponsor|tech|stack|integration|certif)/.test(hint)) score -= 3;
+    if (/(zabbix|grafana|prometheus|aws|google|microsoft|cloudflare|wordpress|woocommerce|cpanel|plesk|litespeed)/.test(hint)) score -= 2;
+    imgCandidates.push({ candidate, score });
+    logos.push(candidate); // reserve the URL for de-duplication; replaced by the ranked list below
   });
+  // Replace the DOM-ordered img entries with the ranked top 4.
+  for (const { candidate } of imgCandidates) logos.splice(logos.indexOf(candidate), 1);
+  imgCandidates.sort((a, b) => b.score - a.score);
+  for (const { candidate } of imgCandidates.slice(0, 4)) logos.push(candidate);
+
   pushLogo($('meta[property="og:image"]').attr('content'), 'og-image');
   $('link[rel~="icon"][href]').each((_i, el) => pushLogo($(el).attr('href'), 'icon'));
   const logoList = logos.slice(0, 8);
@@ -432,7 +484,7 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
     logos: logoList,
     suggestions: {
       colors: suggestColors(rankedColors),
-      fonts: { heading: fonts[0]?.family, body: fonts[1]?.family ?? fonts[0]?.family },
+      fonts: suggestFonts(fonts),
     },
     stats: { stylesheets: sheets.filter(Boolean).length, cssBytes, htmlBytes: page.body.length },
     warnings,

@@ -24,7 +24,10 @@ describe('colour utils', () => {
     expect(isNeutral('#ffffff')).toBe(true);
     expect(isNeutral('#111111')).toBe(true);
     expect(isNeutral('#808080')).toBe(true);
+    expect(isNeutral('#e9ecef')).toBe(true); // bootstrap gray-200: tiny chroma, slight blue tint
+    expect(isNeutral('#6b7280')).toBe(true); // slate grey
     expect(isNeutral('#2563eb')).toBe(false);
+    expect(isNeutral('#d946a0')).toBe(false);
     expect(hexToHsl('#ff0000').h).toBe(0);
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 0);
   });
@@ -67,11 +70,14 @@ describe('analyzeBrandWebsite (offline fixture)', () => {
     <link rel="icon" href="/favicon.ico">
     <style>.hero{background:var(--brand-primary);color:#fff}</style>
   </head><body>
-    <img src="/img/logo.svg" alt="MVN logo" class="site-logo">
+    <section class="partners"><img src="/img/zabbix-logo.png" alt="Zabbix logo"></section>
+    <header><a href="/"><img src="/img/logo.svg" alt="MVN logo" class="site-logo"></a></header>
     <div style="color: rgb(234, 88, 12)">x</div>
   </body></html>`;
   const css = `:root{--brand-primary:#2563eb;--brand-secondary:#0f766e;--text:#111827}
     @font-face{font-family:"Assistant";src:url(a.woff2)}
+    @font-face{font-family:"Font Awesome 5 Free";src:url(fa.woff2)}
+    .fa{font-family:"Font Awesome 5 Free"}.mono{font-family:SFMono-Regular,Menlo,monospace}
     body{font-family:Assistant, Arial, sans-serif;color:var(--text);background:#ffffff}
     h1{font-family:"Heebo",sans-serif;color:var(--brand-primary)}
     .btn{background-color:var(--brand-primary);border-color:#2563eb}
@@ -103,11 +109,16 @@ describe('analyzeBrandWebsite (offline fixture)', () => {
     expect(families).toContain('Heebo');
     expect(families).toContain('Assistant');
     expect(families).not.toContain('Arial');
+    expect(families).not.toContain('Font Awesome 5 Free'); // icon fonts are never brand typography
+    expect(families).not.toContain('SFMono-Regular');
     expect(a.fonts.find((f) => f.family === 'Heebo')?.sources).toContain('google-fonts');
     expect(a.fonts.find((f) => f.family === 'Assistant')?.sources).toContain('font-face');
 
-    expect(a.logos.map((l) => l.kind)).toEqual(['apple-touch-icon', 'img-logo', 'og-image', 'icon']);
+    expect(a.logos.map((l) => l.kind)).toEqual(['apple-touch-icon', 'img-logo', 'img-logo', 'og-image', 'icon']);
     expect(a.logos[0]?.url).toBe('https://example.test/apple-touch-icon.png');
+    // the brand's own header logo outranks the partner logo that appeared earlier in the DOM
+    expect(a.logos[1]?.url).toBe('https://example.test/img/logo.svg');
+    expect(a.logos[2]?.url).toBe('https://example.test/img/zabbix-logo.png');
     expect(a.logos.find((l) => l.kind === 'icon')?.importable).toBe(false); // .ico not importable
 
     expect(a.suggestions.colors.primary).toBe('#2563eb');

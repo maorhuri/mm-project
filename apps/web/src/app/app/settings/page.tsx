@@ -1,5 +1,6 @@
 import { db } from '@mm/db';
-import { isOrgAdmin, listOrgMembers, listUserOrganizations } from '@mm/core';
+import { getConfig, getMfaStatus, isOrgAdmin, listOrgMembers, listUserOrganizations } from '@mm/core';
+import { MfaCard } from './mfa-card';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
@@ -14,11 +15,13 @@ const ROLE_LABELS: Record<string, string> = { OWNER: 'בעלים', ADMIN: 'מנ�
 
 export default async function SettingsPage() {
   const { user, actor, session } = await requireUser();
-  const [sessions, orgs] = await Promise.all([
+  const [sessions, orgs, mfa] = await Promise.all([
     db.session.findMany({ where: { userId: user.id }, orderBy: { lastSeenAt: 'desc' }, take: 20 }),
     listUserOrganizations(actor),
+    getMfaStatus(user.id),
   ]);
   const adminOrgs = orgs.filter((o) => actor.isSuperAdmin || isOrgAdmin(o.role));
+  const mfaRequired = getConfig().MFA_REQUIRED_FOR_ADMINS && (actor.isSuperAdmin || adminOrgs.length > 0);
   const members = await Promise.all(adminOrgs.map(async (o) => ({ org: o, members: await listOrgMembers(actor, o.id) })));
 
   return (
@@ -35,13 +38,15 @@ export default async function SettingsPage() {
             <Row label="שם" value={user.name} />
             <Row label="אימייל" value={user.email} ltr />
             <Row label="הרשאות" value={user.isSuperAdmin ? 'Super admin' : 'משתמש'} />
-            <Row label="MFA" value={user.mfaEnabled ? 'מופעל' : 'לא מופעל — ייפתח להגדרה בשלב הבא'} />
+            <Row label="אימות דו-שלבי" value={mfa.enabled ? 'מופעל' : 'כבוי'} />
             <Row label="נוצר" value={formatDateTime(user.createdAt)} />
           </CardContent>
         </Card>
 
         <ChangePasswordForm />
       </div>
+
+      <MfaCard enabled={mfa.enabled} enrolledAt={mfa.enrolledAt} recoveryCodesLeft={mfa.recoveryCodesLeft} required={mfaRequired} />
 
       <Card>
         <CardHeader>

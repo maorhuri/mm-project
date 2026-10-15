@@ -62,6 +62,8 @@ const schema = z
     AI_SINGLE_RUN_MAX_ILS: z.coerce.number().nonnegative().default(25),
     META_ADS_WRITE_ENABLED: bool(false),
     GOOGLE_ADS_WRITE_ENABLED: bool(false),
+    /** When true, super admins and org OWNER/ADMIN users must enrol in MFA before using the app. */
+    MFA_REQUIRED_FOR_ADMINS: bool(false),
 
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
   })

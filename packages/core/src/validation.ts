@@ -16,6 +16,21 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+/** 6-digit TOTP or a recovery code (xxxxx-xxxxx). */
+export const mfaCodeSchema = z
+  .string()
+  .trim()
+  .min(6)
+  .max(16)
+  .regex(/^[A-Za-z0-9 -]+$/, 'Invalid code');
+
+export const mfaVerifySchema = z.object({ code: mfaCodeSchema });
+
+export const mfaDisableSchema = z.object({
+  password: z.string().min(1),
+  code: mfaCodeSchema,
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1),

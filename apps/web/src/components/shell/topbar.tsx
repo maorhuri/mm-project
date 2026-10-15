@@ -152,6 +152,9 @@ function ThemeToggle() {
 }
 
 function UserMenu({ user }: { user: SessionUser }) {
+  // Radix closes the menu on pointer-up, before a nested <form> would receive its click —
+  // so the server action is invoked from onSelect instead of a submit button.
+  const [loggingOut, startLogout] = useTransition();
   const initials = user.name
     .split(/\s+/)
     .map((p) => p[0])
@@ -183,13 +186,9 @@ function UserMenu({ user }: { user: SessionUser }) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <form action={logoutAction}>
-          <DropdownMenuItem asChild>
-            <button type="submit" className="w-full">
-              <LogOut /> התנתקות
-            </button>
-          </DropdownMenuItem>
-        </form>
+        <DropdownMenuItem disabled={loggingOut} onSelect={() => startLogout(() => logoutAction())}>
+          <LogOut /> {loggingOut ? 'מתנתק…' : 'התנתקות'}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
