@@ -17,26 +17,43 @@ Approval Center base, audit log, notifications, auto-deploy pipeline, docs.
 Exit criteria: login · create brand · switch brand · isolation tests green ·
 migrations pass · production build served at https://mm-marketing.mymvn.app.
 
-## Phase 2 — AI engine + Creative Studio
+## Phase 2 — AI engine + Creative Studio — **v1 live (2026-10-16)**
 
-- Provider adapters: Anthropic, OpenAI, Google (text), one image provider.
-  Model ids come from configuration, verified against provider docs at
-  implementation time.
-- AI router: task type → provider by capability, quality, price, availability,
-  latency, budget. Per-run cost in ILS, per-brand monthly cap, hard stop.
-- Brand knowledge ingestion from approved URLs/documents.
-- Creative Studio: idea generation → background/image generation → **editable
-  Hebrew typography layers** (never rendered by the image model) → brand
-  templates → versions → PNG/JPG/WebP export → approval.
-- Strategy agent v1: goals, audiences, competitor summary from permitted
-  sources, campaign proposals with data basis + confidence.
+Delivered (see [PROGRESS.md](../PROGRESS.md) for verification status):
 
-## Phase 3 — Video Studio
+- Provider adapters: OpenAI (text, images, TTS), Anthropic (text), Google
+  (text, images) + clearly labelled mocks (never in production for non-demo
+  brands). Model ids/prices only in `packages/core/src/ai/catalog.ts`.
+- AI engine: task → candidates by tier/quality from the catalog, fallback
+  across candidates, every call in `ai_runs` with its ILS cost, monthly cap per
+  brand (`AI_MONTHLY_BUDGET_ILS`, soft limit at 80 % → economy tier), single-run
+  cap (`AI_SINGLE_RUN_MAX_ILS`) → `AI_HIGH_COST` approval, JSON repair pass.
+- Approved-facts packet (`buildFactsPacket`) as the only DB→prompt path;
+  deterministic Hebrew copy QA (forbidden claims, unverified prices, numbers,
+  superlatives) before storage and on every edit.
+- Creative Studio: AI ideas with claim citations → editable layer document
+  (3 brand templates × 5 aspect ratios, bundled OFL Hebrew fonts) → live
+  preview → Chromium render in the worker (overflow / missing-asset / font
+  warnings) → PNG/JPG/WebP → approval bound to the version.
+- Strategy agent v1: goals / audiences / campaign proposals / 14-day content
+  plan; each item cites fact ids with a confidence level; data gaps listed.
 
-Script generator, storyboard, scene list, provider clip generation behind a
-budget gate (estimate before render, draft vs final, retry limits), Hebrew TTS,
-subtitle rendering, Remotion/FFmpeg assembly on the worker, preview, versions,
-MP4 export in multiple aspect ratios, disclosure for AI imagery.
+Deferred to a later iteration: knowledge ingestion from URLs/documents into
+`brand_knowledge` chunks, routing policy editable from the UI, per-format
+adaptations inside one document, drag-and-drop in the editor (numeric boxes
+today), QA judge on a second provider, atomic (row-locked) budget reservation.
+
+## Phase 3 — Video Studio — **v1 live (2026-10-16)**
+
+Delivered: grounded AI script with QA → per-scene OpenAI TTS (voice per
+project) → branded scene cards / library images / AI images through the
+creative templates → FFmpeg assembly with burnt-in Hebrew subtitles (SRT kept)
+→ progress, preview, MP4 download, approval. Cost estimate before rendering;
+actual cost in the ledger.
+
+Deferred: provider video-clip generation (no verified Hebrew-safe video model
+yet), storyboard images per scene before render, draft-vs-final presets,
+multi-aspect export from one project, AI-imagery disclosure overlay.
 
 ## Phase 4 — Social publishing & automation
 

@@ -14,10 +14,12 @@ import {
   getConfig,
   getQueue,
   getRedisConnection,
+  listMetaConnectedBrandIds,
   logger,
   renderCreativeVersion,
   renderVideoProject,
   startJobRecord,
+  syncMetaAds,
   systemBrandContext,
 } from '@mm/core';
 import type { QueueName } from '@mm/core';
@@ -76,12 +78,36 @@ const videoProcessors: Record<string, Processor> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Ads — nightly read-only Meta sync for every connected brand
+// ---------------------------------------------------------------------------
+
+const adsProcessors: Record<string, Processor> = {
+  [JOBS.metaSync]: async (job) => {
+    const data = (job.data ?? {}) as Record<string, unknown>;
+    const only = typeof data.brandId === 'string' ? data.brandId : null;
+    const targets = only ? [{ brandId: only }] : await listMetaConnectedBrandIds();
+    const results: Record<string, string> = {};
+    for (const t of targets) {
+      try {
+        const ctx = await systemBrandContext(t.brandId, typeof data.actorUserId === 'string' ? data.actorUserId : null);
+        const sync = await syncMetaAds(ctx, { days: typeof data.days === 'number' ? data.days : 30 });
+        results[t.brandId] = sync.status;
+      } catch (err) {
+        results[t.brandId] = `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200);
+        logger.warn({ err, brandId: t.brandId }, 'meta sync failed');
+      }
+    }
+    return { brands: targets.length, results };
+  },
+};
+
 const processors: Record<QueueName, Record<string, Processor>> = {
   system: systemProcessors,
   media: {},
   content: contentProcessors,
   publishing: {},
-  ads: {},
+  ads: adsProcessors,
   video: videoProcessors,
   ai: {},
 };
@@ -138,6 +164,8 @@ async function scheduleRecurringJobs(): Promise<void> {
     { pattern: '0 4 * * *', tz: 'Asia/Jerusalem' },
     { name: JOBS.cleanupSessions },
   );
+  // Meta ads mirror: once a night (insights for yesterday are final by then); manual syncs come from the UI.
+  await getQueue(QUEUES.ads).upsertJobScheduler(JOBS.metaSync, { pattern: '30 5 * * *', tz: 'Asia/Jerusalem' }, { name: JOBS.metaSync, data: { days: 30 } });
 }
 
 async function main(): Promise<void> {

@@ -1,5 +1,5 @@
 import { Plug } from 'lucide-react';
-import { isOrgAdmin, listIntegrationStatus } from '@mm/core';
+import { getMetaAppStatus, getMetaConnection, isOrgAdmin, listIntegrationStatus } from '@mm/core';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { IntegrationStatusBadge } from '@/components/status-badges';
 import { requireBrandContext } from '@/lib/brand';
 import { formatDateTime } from '@/lib/format';
+import { MetaPanel } from './meta-panel';
 import { ProviderKeyControls } from './provider-key-controls';
 
 export const metadata = { title: 'אינטגרציות' };
@@ -24,10 +25,14 @@ const KIND_LABELS: Record<string, string> = {
   OTHER: 'אחר',
 };
 
-export default async function IntegrationsPage() {
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
   const ctx = await requireBrandContext();
-  const integrations = await listIntegrationStatus(ctx);
+  const [integrations, metaApp, metaConnection] = await Promise.all([listIntegrationStatus(ctx), getMetaAppStatus(ctx.orgId), getMetaConnection(ctx)]);
   const canManage = ctx.actor.isSuperAdmin || isOrgAdmin(ctx.orgRole);
+  const metaNotice = first(sp.meta) === 'connected' ? { kind: 'success' as const, text: 'המותג חובר ל-Meta' } : first(sp.meta_error) ? { kind: 'error' as const, text: String(first(sp.meta_error)) } : null;
 
   return (
     <>
@@ -40,6 +45,14 @@ export default async function IntegrationsPage() {
           בדיקה אמיתית מול ה-API.
         </AlertDescription>
       </Alert>
+      <MetaPanel
+        brandId={ctx.brandId}
+        canManageOrg={canManage}
+        canManageBrand={ctx.brandRole === 'BRAND_ADMIN'}
+        app={metaApp}
+        connection={{ ...metaConnection, status: metaConnection.status }}
+        notice={metaNotice}
+      />
       <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
@@ -53,7 +66,7 @@ export default async function IntegrationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {integrations.map((i) => (
+            {integrations.filter((i) => i.provider !== 'meta').map((i) => (
               <TableRow key={i.provider}>
                 <TableCell className="font-medium">
                   {i.label}

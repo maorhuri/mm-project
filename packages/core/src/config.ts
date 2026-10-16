@@ -70,6 +70,8 @@ const schema = z
     /** Override for the bundled Hebrew fonts directory (defaults resolve packages/core/assets/fonts). */
     MM_FONTS_DIR: z.string().optional(),
     META_ADS_WRITE_ENABLED: bool(false),
+    /** Graph API version used for every Meta call (verified in docs/META_INTEGRATION.md). */
+    META_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v25.0'),
     GOOGLE_ADS_WRITE_ENABLED: bool(false),
     /** When true, super admins and org OWNER/ADMIN users must enrol in MFA before using the app. */
     MFA_REQUIRED_FOR_ADMINS: bool(false),

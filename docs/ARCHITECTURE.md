@@ -35,7 +35,9 @@ enqueues jobs. The worker never renders UI.
 | Package | Responsibility | May import |
 | --- | --- | --- |
 | `packages/db` (`@mm/db`) | Prisma schema, migrations, generated client, **tenant-scoped client** (`forBrand`) | `@prisma/client` only |
-| `packages/core` (`@mm/core`) | Config, errors, crypto, auth (password/session), tenancy context + RBAC, audit, storage adapters, domain services (users, orgs, brands, media, approvals, notifications, integrations, dashboard), queue definitions, seed | `@mm/db`, libraries |
+| `packages/core` (`@mm/core`) | Config, errors, crypto, auth (password/session/MFA), tenancy context + RBAC, audit, storage adapters, domain services (users, orgs, brands, media, approvals, notifications, integrations, dashboard, **creative, strategy, video**), **AI engine** (`src/ai`: catalog, adapters, router, facts packet, QA, ledger engine), **creative documents** (`src/creative`: schema, templates, HTML), queue definitions, seed | `@mm/db`, libraries |
+| `@mm/core/creative` | Browser-safe subset (document schema, templates, HTML generation, font families) used by the editor's live preview | zod, nothing from Node |
+| `@mm/core/render` | Chromium (Playwright) rendering of self-contained HTML + sharp variants. **Worker only** — never imported by `apps/web` | playwright, sharp |
 | `apps/web` (`@mm/web`) | Next.js App Router: pages, server actions, REST route handlers, UI components | `@mm/core`, `@mm/db` (types + root client for identity-level reads) |
 | `apps/worker` (`@mm/worker`) | BullMQ workers + job schedulers, writes `background_jobs` records | `@mm/core`, `@mm/db` |
 
@@ -117,12 +119,42 @@ refuses placeholder secrets in production. Non-Next processes load `.env` by
 walking up from the working directory; in production systemd injects
 `/opt/mm-marketing/shared/.env`.
 
+## AI engine (Phase 2)
+
+`runText` / `runImage` / `runTts` in `packages/core/src/ai/engine.ts` are the
+only way the app calls a model:
+
+1. `routeCandidates()` orders catalog models of the org's connected providers
+   by the task's tier (`TASK_DEFAULTS`), quality rank and budget pressure.
+2. The gate: engine paused? single-run estimate above `AI_SINGLE_RUN_MAX_ILS`
+   → an `AI_HIGH_COST` approval is created and the call refused until it is
+   approved (then the run is tied to the approval and marks it EXECUTED);
+   monthly cap exceeded → BLOCKED row + admins notified.
+3. An `ai_runs` row is written RUNNING with the estimate, the adapter is
+   called (fallback to the next candidate on failure), the row is settled with
+   the provider's usage → ILS at catalog prices.
+4. Prompts are built only from `buildFactsPacket()` (approved knowledge, active
+   products, settings) + `groundingRules()`; user text is wrapped in
+   `<user_request>`; outputs are QA'd by `runCopyQa()` before storage.
+
+Mocks (`[MOCK]`-labelled) are used only when no key exists and
+`NODE_ENV !== 'production'`, or `AI_ALLOW_MOCK=true`, or the brand is a demo.
+
+## Rendering (Phase 2/3)
+
+A creative is a `CreativeDocument` (JSON, percent-positioned layers, real text).
+`documentToHtml()` produces one self-contained HTML document: the editor shows
+it in an iframe (fonts from `/fonts`, images via the access-controlled media
+route) and the worker renders the same HTML in headless Chromium (fonts and
+images inlined as data: URIs, all network blocked). The page script auto-fits
+text and reports overflow / missing-asset / font warnings, which are stored on
+the version. Videos reuse the templates per scene; FFmpeg assembles the MP4 and
+burns subtitles with libass using the bundled fonts.
+
 ## What is deliberately not here yet
 
-- AI provider adapters and the AI router (Phase 2) — `provider_accounts` and
-  the integration catalog exist; no model calls are made.
-- Video pipeline (Phase 3), social publishing (Phase 4), ads (Phase 5),
-  CRM/attribution (Phase 6). Their tables are designed in
-  [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) and added by migration per phase.
+- Social publishing (Phase 4), ads (Phase 5), CRM/attribution (Phase 6). Their
+  tables are designed in [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) and added by
+  migration per phase.
 - Postgres row-level security as a second isolation layer (listed in
   [SECURITY.md](SECURITY.md) hardening).

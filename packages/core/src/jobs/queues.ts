@@ -19,6 +19,7 @@ export const JOBS = {
   cleanupSessions: 'system.cleanup-sessions',
   creativeRender: 'creative.render',
   videoRender: 'video.render',
+  metaSync: 'ads.sync-meta',
 } as const;
 
 let connection: IORedis | undefined;

@@ -173,6 +173,12 @@ model Brand {
   strategyBriefs   StrategyBrief[]
   videoProjects    VideoProject[]
   videoScenes      VideoScene[]
+  adAccounts       AdAccount[]
+  campaigns        Campaign[]
+  adSets           AdSet[]
+  advertisements   Advertisement[]
+  adInsights       AdInsight[]
+  integrationSyncs IntegrationSync[]
 
   @@unique([orgId, slug])
   @@index([orgId, status])
@@ -858,4 +864,157 @@ model VideoScene {
 
   @@unique([projectId, order])
   @@map("video_scenes")
+}
+
+// ===========================================================================
+// Phase 5 (pulled forward) — Meta ads, read-only mirror
+// ===========================================================================
+
+enum SyncStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// An advertising account connected to a brand (Meta today; Google later).
+model AdAccount {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  brandId           String   @map("brand_id") @db.Uuid
+  provider          String
+  /// Provider id, e.g. "act_1234567890"
+  externalId        String   @map("external_id")
+  name              String
+  currency          String?
+  timezone          String?
+  accountStatus     Int?     @map("account_status")
+  /// The ad account the brand's dashboards use (one per provider)
+  isSelected        Boolean  @default(false) @map("is_selected")
+  providerAccountId String?  @map("provider_account_id") @db.Uuid
+  syncedAt          DateTime? @map("synced_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  brand     Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@unique([brandId, provider, externalId])
+  @@map("ad_accounts")
+}
+
+model Campaign {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  brandId         String    @map("brand_id") @db.Uuid
+  adAccountId     String    @map("ad_account_id") @db.Uuid
+  externalId      String    @map("external_id")
+  name            String
+  objective       String?
+  status          String?
+  effectiveStatus String?   @map("effective_status")
+  /// Budgets in the account currency (major units)
+  dailyBudget     Decimal?  @map("daily_budget") @db.Decimal(14, 2)
+  lifetimeBudget  Decimal?  @map("lifetime_budget") @db.Decimal(14, 2)
+  startTime       DateTime? @map("start_time")
+  stopTime        DateTime? @map("stop_time")
+  raw             Json      @default("{}")
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+
+  brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  adAccount AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  adSets    AdSet[]
+
+  @@unique([adAccountId, externalId])
+  @@index([brandId, effectiveStatus])
+  @@map("campaigns")
+}
+
+model AdSet {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  brandId          String    @map("brand_id") @db.Uuid
+  campaignId       String    @map("campaign_id") @db.Uuid
+  externalId       String    @map("external_id")
+  name             String
+  status           String?
+  effectiveStatus  String?   @map("effective_status")
+  dailyBudget      Decimal?  @map("daily_budget") @db.Decimal(14, 2)
+  lifetimeBudget   Decimal?  @map("lifetime_budget") @db.Decimal(14, 2)
+  optimizationGoal String?   @map("optimization_goal")
+  billingEvent     String?   @map("billing_event")
+  startTime        DateTime? @map("start_time")
+  endTime          DateTime? @map("end_time")
+  raw              Json      @default("{}")
+  syncedAt         DateTime  @default(now()) @map("synced_at")
+
+  brand    Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  campaign Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads      Advertisement[]
+
+  @@unique([campaignId, externalId])
+  @@map("ad_sets")
+}
+
+model Advertisement {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  brandId         String   @map("brand_id") @db.Uuid
+  adSetId         String   @map("ad_set_id") @db.Uuid
+  externalId      String   @map("external_id")
+  name            String
+  status          String?
+  effectiveStatus String?  @map("effective_status")
+  creativeId      String?  @map("creative_id")
+  thumbnailUrl    String?  @map("thumbnail_url")
+  raw             Json     @default("{}")
+  syncedAt        DateTime @default(now()) @map("synced_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  adSet AdSet @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+
+  @@unique([adSetId, externalId])
+  @@map("advertisements")
+}
+
+/// Daily performance rows exactly as the provider reported them (source + sync time on every row).
+model AdInsight {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  brandId          String   @map("brand_id") @db.Uuid
+  provider         String
+  /// "account" | "campaign" | "adset" | "ad"
+  level            String
+  objectExternalId String   @map("object_external_id")
+  objectName       String?  @map("object_name")
+  date             DateTime @db.Date
+  spend            Decimal  @default(0) @db.Decimal(14, 4)
+  currency         String?
+  impressions      Int      @default(0)
+  clicks           Int      @default(0)
+  reach            Int      @default(0)
+  cpc              Decimal? @db.Decimal(14, 4)
+  cpm              Decimal? @db.Decimal(14, 4)
+  ctr              Decimal? @db.Decimal(10, 4)
+  /// [{ action_type, value }]
+  actions          Json     @default("[]")
+  syncedAt         DateTime @default(now()) @map("synced_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, provider, level, objectExternalId, date])
+  @@index([brandId, level, date])
+  @@map("ad_insights")
+}
+
+model IntegrationSync {
+  id         String     @id @default(uuid(7)) @db.Uuid
+  brandId    String     @map("brand_id") @db.Uuid
+  provider   String
+  kind       String
+  status     SyncStatus @default(RUNNING)
+  startedAt  DateTime   @default(now()) @map("started_at")
+  finishedAt DateTime?  @map("finished_at")
+  stats      Json       @default("{}")
+  error      String?
+  startedById String?   @map("started_by_id") @db.Uuid
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, provider, startedAt])
+  @@map("integration_syncs")
 }

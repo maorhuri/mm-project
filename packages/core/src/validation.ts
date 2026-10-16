@@ -362,3 +362,19 @@ export type BriefRequestInput = z.infer<typeof briefRequestSchema>;
 export type VideoProjectInput = z.infer<typeof videoProjectSchema>;
 export type VideoScriptRequestInput = z.infer<typeof videoScriptRequestSchema>;
 export type VideoSceneUpdateInput = z.infer<typeof videoSceneUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Meta (Facebook) integration
+// ---------------------------------------------------------------------------
+export const metaAppCredentialsSchema = z.object({
+  appId: z.string().trim().regex(/^\d{5,32}$/, 'App ID הוא מספר'),
+  /** Empty = keep the stored secret. */
+  appSecret: z.string().trim().max(256).default(''),
+  configId: z.string().trim().regex(/^\d{5,32}$/, 'Configuration ID הוא מספר').nullable().optional(),
+});
+export const metaSelectSchema = z.object({
+  adAccountId: z.string().uuid().optional(),
+  pageId: z.string().trim().regex(/^\d*$/).optional(),
+});
+export type MetaAppCredentialsInput = z.infer<typeof metaAppCredentialsSchema>;
+export type MetaSelectInput = z.infer<typeof metaSelectSchema>;

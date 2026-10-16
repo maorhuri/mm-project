@@ -28,7 +28,21 @@ the app through App Review.
 | Access tiers | Marketing API **Limited access** (default, "development only"): unlimited ad accounts, heavy rate limits, app admins/developers may call on behalf of ad account admins. **Full access** via App Review "+Upgrade": needs ≥500 Marketing API calls in 15 days and <15% error rate. Platform permissions: **standard access** auto-approved for business apps (own ad accounts only); **advanced access** per permission via App Review (other people's ad accounts). *All calls, on any level, hit production data.* | authorization |
 | Go-live | Business-type app required; Advanced Access + Ongoing Review to serve businesses you don't own; `public_profile` must have Advanced Access before the app goes live. SUAT logins are web-only and require the client to have a business portfolio; the app must belong to our own portfolio. | FLB overview |
 
-## Planned implementation (Phase 4/5 — after the AI engine)
+## Implemented (2026-10-16, read-only)
+
+| Piece | Where |
+| --- | --- |
+| Org-wide app credentials (App ID, App Secret, optional Login-for-Business `config_id`), encrypted in `provider_accounts` (`provider="meta_app"`, brand NULL) | `packages/core/src/services/meta.ts` → `saveMetaAppCredentials`; Integrations page (org admins) |
+| Connect flow: `GET /api/v1/brands/:id/integrations/meta/connect` → HMAC-signed `state` (brand, user, nonce, 10 min) + `mm_meta_state` cookie → `https://www.facebook.com/{version}/dialog/oauth` with `config_id` (or `scope` when no config id) | `buildMetaConnectUrl`, route under `apps/web/src/app/api/v1/brands/[brandId]/integrations/meta/connect` |
+| Callback `GET /api/v1/integrations/meta/callback`: verifies state + cookie nonce + same user, exchanges the code server-side, tries the long-lived exchange, `debug_token`, `/me`, `/me/adaccounts`, `/me/accounts` (+ Instagram business account, Page tokens); stores tokens encrypted (`provider="meta"`, per brand), mirrors ad accounts into `ad_accounts` | `completeMetaConnect` |
+| Asset selection (ad account, Page/Instagram), disconnect, status | `selectMetaAssets`, `disconnectMeta`, `getMetaConnection`; Integrations page Meta card |
+| Read-only sync: campaigns, ad sets, ads (with creative thumbnail), daily insights at account + campaign level for N days (budgets converted from minor units, spend as reported); every row keeps `synced_at`; `integration_syncs` log; auth errors mark the connection EXPIRED | `syncMetaAds`; `POST /api/v1/brands/:id/integrations/meta/sync`; nightly worker job `ads.sync-meta` 05:30 Asia/Jerusalem |
+| Dashboard `/app/ads`: totals (spend, impressions, clicks, CTR, CPC), daily spend bars, campaigns table — labelled read-only with the last sync time | `getAdsOverview`; `apps/web/src/app/app/ads` |
+| Tests with a fake Graph API: state signing, error mapping, code exchange, asset discovery, pagination, idempotent sync, overview maths, isolation, expired-token handling | `packages/core/tests/meta.test.ts` |
+
+Not yet verified against a real Meta app: the owner has to enter the App ID / Secret (and the Login for Business configuration id) and add the redirect URI in the app settings; then connect a brand in dev mode. Writes to Meta do not exist in the code base yet.
+
+## Planned next (after the live dev-mode test)
 
 1. **Settings (org-wide)**: App ID + App Secret entered in the Integrations page
    (encrypted, like AI keys); `config_id` for the login configuration; the

@@ -5,7 +5,8 @@
 | Layer | Where | Runs against | Command |
 | --- | --- | --- | --- |
 | Pure unit | `packages/core/tests/tenant-scope.test.ts` (query rewriting), crypto round-trips | nothing external | `npm test` |
-| Integration | `packages/core/tests/*.test.ts` — auth/sessions, approvals, media, brand kit | real PostgreSQL (`TEST_DATABASE_URL`), in-memory storage | `npm test` |
+| Integration | `packages/core/tests/*.test.ts` — auth/sessions, MFA, approvals, media, brand kit, website import, provider credentials, **AI engine** (ledger, budget cap, approval gate, fallback, JSON repair — fake adapter behind a saved key), **Creative Studio** (templates, HTML, QA blocking, versions, approval handler, isolation), **Video Studio** (script, scene QA, estimate, render queue, SRT) | real PostgreSQL (`TEST_DATABASE_URL`), in-memory storage, no Redis (queue dispatch is stubbed via `set*RenderDispatcher`) | `npm test` |
+| **Render pipeline** | `packages/core/tests/render.test.ts` — real Chromium render of Hebrew typography (size, overflow warnings) and a real FFmpeg assembly with mock TTS + burnt-in subtitles | Chromium (`PLAYWRIGHT_BROWSERS_PATH`) + ffmpeg/ffprobe | `RENDER_TESTS=1 npm test` (runs on the server; skipped in CI) |
 | **Tenant isolation** | `packages/core/tests/tenant-isolation.test.ts` | real PostgreSQL | `npm run test:isolation` |
 | Static | TypeScript strict, ESLint | — | `npm run typecheck`, `npm run lint` |
 | Build | `next build`, `tsup` | — | `npm run build` |
@@ -55,10 +56,19 @@ runs generate → migrate → typecheck → lint → test → build on every pus
 The production deploy script runs the same gates on the server before
 switching the release.
 
+## Browser end-to-end (live site)
+
+`/root/e2e-phase23.sh` on the server creates a throwaway org owner, drives the
+live site with Playwright (login → strategy brief → creative project → AI ideas
+→ compose → wait for the Chromium render → PNG download → editor preview →
+video project → AI script → render → MP4 range request → AI ledger) and deletes
+the user. It spends real provider credits (a few agorot) and leaves the
+generated project in the brand as evidence; run it after deploys that touch
+Phase 2/3.
+
 ## Not yet covered (tracked)
 
-- End-to-end browser tests (login → create brand → upload → approve) —
-  planned with Playwright once Phase 2 UI stabilizes.
+- Browser E2E in CI (today it runs on the server only, against production).
 - Route-handler tests for the REST API (currently covered indirectly through
   the shared services; add supertest-style tests in Phase 2).
 - Worker job tests with a Redis container.

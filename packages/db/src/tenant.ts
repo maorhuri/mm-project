@@ -27,6 +27,12 @@ export const TENANT_MODELS = new Set([
   'StrategyBrief',
   'VideoProject',
   'VideoScene',
+  'AdAccount',
+  'Campaign',
+  'AdSet',
+  'Advertisement',
+  'AdInsight',
+  'IntegrationSync',
 ]);
 
 /** The Brand model itself is scoped by its primary key rather than a brand_id column. */

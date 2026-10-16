@@ -42,7 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/app/modules/calendar', label: 'לוח תוכן', icon: CalendarDays, phase: 4, module: 'calendar' },
   { href: '/app/modules/social-accounts', label: 'חשבונות סושיאל', icon: Share2, phase: 4, module: 'social-accounts' },
   { href: '/app/modules/publishing', label: 'פרסום אורגני', icon: Send, phase: 4, module: 'publishing' },
-  { href: '/app/modules/ads', label: 'מנהל קמפיינים', icon: Megaphone, phase: 5, module: 'ads' },
+  { href: '/app/ads', label: 'מנהל קמפיינים', icon: Megaphone },
   { href: '/app/modules/crm', label: 'לידים ו-CRM', icon: Users, phase: 6, module: 'crm' },
   { href: '/app/modules/analytics', label: 'אנליטיקה', icon: BarChart3, phase: 5, module: 'analytics' },
   { href: '/app/modules/insights', label: 'תובנות AI', icon: Bot, phase: 6, module: 'insights' },
@@ -84,13 +84,6 @@ export const MODULES: Record<string, ModuleInfo> = {
     phase: 4,
     summary: 'תזמון ופרסום פוסטים, תמונות וסרטונים דרך ה-API הרשמי, רק אחרי אישור.',
     deliverables: ['Scheduler', 'Idempotency נגד פרסום כפול', 'סטטוס ושגיאות', 'נתוני ביצועים'],
-  },
-  ads: {
-    key: 'ads',
-    title: 'מנהל קמפיינים',
-    phase: 5,
-    summary: 'Meta Ads ו-Google Ads: קריאה תחילה, יצירת קמפיינים מושהים, שום הוצאה ללא אישור מפורש.',
-    deliverables: ['חיבור חשבונות פרסום', 'טעינת קמפיינים ונתונים', 'טיוטות מושהות', 'אישורי תקציב'],
   },
   crm: {
     key: 'crm',

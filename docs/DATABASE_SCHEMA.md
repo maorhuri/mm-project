@@ -61,18 +61,27 @@ Conventions: snake_case tables/columns, UUID v7 primary keys, `created_at` /
 - `audit_logs(brand_id, created_at)`, `audit_logs(actor_user_id, created_at)`, `audit_logs(entity_type, entity_id)`
 - `notifications(user_id, read_at, created_at)`, `notifications(brand_id, created_at)`
 
+## Implemented in Phase 2/3 (migration `20261016064427_phase2_phase3`)
+
+All carry `brand_id`, are listed in `TENANT_MODELS` and cascade on brand delete.
+
+| Table | Purpose / key columns |
+| --- | --- |
+| `ai_runs` | The AI cost ledger: `task` (enum), `provider`, `model_id`, `status` (RUNNING/SUCCEEDED/FAILED/BLOCKED), tokens / images / characters, `cost_ils` (Decimal 12,4), `cost_usd`, `estimated`, `latency_ms`, `prompt_hash`, `facts_hash`, `approval_id` for runs that needed an `AI_HIGH_COST` approval, `metadata` (label, mock flag). Monthly usage = SUM over the brand's SUCCEEDED/RUNNING rows |
+| `content_ideas` | AI ideas: title, hook, angle, English `visual_direction`, `copy` JSON (headline/subheadline/cta/price/badge), `claims` JSON (`{text, factIds[], kind}`), `qa` report, status NEW/SELECTED/USED/DISCARDED, `source` (`ai`/`mock`), `ai_run_id`, `facts_hash`, `brief` JSON (projectId, goal…) |
+| `creative_projects` | channel, format, `aspect` (R1X1/R4X5/R9X16/R16X9/R191X1), status DRAFT/IN_REVIEW/APPROVED/REJECTED/ARCHIVED, product/idea refs, goal/audience/style, `current_version_id` |
+| `creative_versions` | Immutable versions: `document` JSON (CreativeDocument v1 — layers with percent boxes), `copy` (text by role), `qa`, `render_status` + `render_error` + `render_warnings`, rendered PNG/JPG/WebP media ids, status DRAFT/READY/APPROVED/REJECTED/SUPERSEDED, `approval_id`, `facts_hash`, note. Unique `(project_id, version)` |
+| `strategy_briefs` | kind GOALS/AUDIENCES/CAMPAIGN_PROPOSAL/CONTENT_PLAN, `content` JSON (summary, items with basis fact ids + confidence + dataGap, dataGaps, model), `facts_hash`, `ai_run_id`, status DRAFT/ACCEPTED/ARCHIVED |
+| `video_projects` | aspect, status DRAFT/SCRIPTED/RENDERING/READY/FAILED/APPROVED, `voice`, `qa`, output/voiceover media ids, `subtitles_srt`, `duration_ms`, `cost_ils`, `render_progress` / `render_step` / `render_error`, `approval_id`, `facts_hash` |
+| `video_scenes` | `order` (unique per project), narration, on-screen text, `visual_kind` CARD/MEDIA/AI_IMAGE, media / visual prompt, rendered frame + audio media ids, `duration_ms` |
+
 ## Designed for later phases (added by migration when the module is built)
 
 All carry `brand_id` and go through the tenant client.
 
 | Phase | Table | Purpose / key columns |
 | --- | --- | --- |
-| 2 | `ai_providers` | Provider registry: `provider`, `model_id` (configured, not hard-coded), capabilities, price per 1k tokens / per image / per second, enabled |
-| 2 | `ai_runs` | Every model call: `brand_id`, `provider_id`, task type, prompt hash, input/output tokens, cost_ils, latency, status, `approval_id` for high-cost runs |
-| 2 | `ai_usage` | Daily roll-up per brand/provider for budget enforcement |
-| 2 | `content_ideas` | Idea library: topic, angle, product_id, audience, score, used_at |
-| 2 | `creative_projects` / `creative_versions` | Editable creatives: format (post/story/carousel/banner), JSON layer document (typography layers, images), rendered `media_asset_id`, version number, approval link |
-| 3 | `video_projects` / `video_scenes` / `video_render_jobs` | Script, storyboard, scene assets, voice-over asset, subtitles, render preset, estimated vs actual cost, output `media_asset_id`, disclosure flag for AI imagery |
+| 2+ | `ai_models` | Operator-editable copy of the model catalog (today the catalog is code, verified with a date) |
 | 4 | `social_accounts` | Facebook Page / Instagram account per brand: external ids, encrypted tokens, scopes, expiry, health |
 | 4 | `content_calendar` | Monthly plan: month, targets, status, approval_id |
 | 4 | `scheduled_posts` / `published_posts` | Channel, copy variants, media, scheduled_at, idempotency key, external post id, status, error, insights snapshot |
