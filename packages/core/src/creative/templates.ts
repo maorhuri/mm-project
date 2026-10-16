@@ -337,3 +337,64 @@ export function buildDocument(input: ComposeInput): CreativeDocument {
 
   return { v: 1, aspect: input.aspect, width, height, background, fonts: { heading, body }, template, layers };
 }
+
+export interface ReelOverlayInput {
+  aspect: AspectRatio;
+  headline: string | null;
+  kit: ComposeKit;
+}
+
+/** Vertical band (percent of height) kept free for burnt-in subtitles, per aspect family. */
+export function subtitleBand(aspect: AspectRatio): { top: number; bottom: number } {
+  const family = familyOf(aspect);
+  return family === 'tall' ? { top: 58, bottom: 72 } : family === 'wide' ? { top: 74, bottom: 92 } : { top: 70, bottom: 90 };
+}
+
+/**
+ * Overlay for video scenes (Reels / Stories / feed video): the on-screen headline sits in the upper
+ * band, the logo in the corner, soft shading keeps both legible, and the lower band stays free for
+ * the burnt-in subtitles (above the platform UI that covers the bottom of vertical videos).
+ */
+export function buildReelOverlay(input: ReelOverlayInput): CreativeDocument {
+  const { width, height } = ASPECTS[input.aspect];
+  const s = Math.min(width, height) / 1080;
+  const px = (n: number) => Math.round(n * s);
+  const family = familyOf(input.aspect);
+  const heading = resolveFontFamily(input.kit.fonts.heading, 'Heebo');
+  const body = resolveFontFamily(input.kit.fonts.body, heading === 'Heebo' ? 'Assistant' : 'Heebo');
+  const band = subtitleBand(input.aspect);
+  const layers: CreativeLayer[] = [];
+  const topShade = family === 'tall' ? 34 : family === 'wide' ? 38 : 34;
+  layers.push({ id: 'shade-top', type: 'shape', role: 'overlay', box: { x: 0, y: 0, w: 100, h: topShade }, color: '#000000', opacity: 1, radius: 0, gradient: { to: '#000000', angle: 180, fromOpacity: 0.5, toOpacity: 0 } });
+  layers.push({ id: 'shade-bottom', type: 'shape', role: 'overlay', box: { x: 0, y: band.top - 10, w: 100, h: 110 - band.top }, color: '#000000', opacity: 1, radius: 0, gradient: { to: '#000000', angle: 180, fromOpacity: 0, toOpacity: 0.5 } });
+  if (input.kit.logoMediaId) {
+    const logoBox: Box = family === 'tall' ? { x: 6, y: 7, w: 26, h: 5 } : family === 'wide' ? { x: 3, y: 5, w: 14, h: 10 } : { x: 5, y: 5, w: 22, h: 7 };
+    layers.push({ id: 'logo', type: 'image', role: 'logo', mediaId: input.kit.logoMediaId, box: logoBox, fit: 'contain', opacity: 1, radius: 0 });
+  }
+  const headline = clean(input.headline);
+  if (headline) {
+    const box: Box = family === 'tall' ? { x: 6, y: 14, w: 88, h: 15 } : family === 'wide' ? { x: 20, y: 6, w: 60, h: 22 } : { x: 6, y: 14, w: 88, h: 17 };
+    layers.push({
+      id: 'headline',
+      type: 'text',
+      role: 'headline',
+      text: headline,
+      box,
+      font: 'heading',
+      size: px(family === 'tall' ? 84 : family === 'wide' ? 64 : 72),
+      weight: 800,
+      color: '#ffffff',
+      align: 'center',
+      valign: 'top',
+      lineHeight: 1.08,
+      background: null,
+      radius: 0,
+      padding: 0,
+      autofit: true,
+      shadow: true,
+      letterSpacing: 0,
+      opacity: 1,
+    });
+  }
+  return { v: 1, aspect: input.aspect, width, height, background: '#000000', fonts: { heading, body }, template: 'reel', layers };
+}

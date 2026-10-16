@@ -5,7 +5,7 @@ import { uploadMedia } from '../src/services/media';
 import { createCharacter } from '../src/services/characters';
 import { planClipFit, sceneFfmpegArgs } from '../src/media/ffmpeg';
 import { splitForMotion } from '../src/creative/document';
-import { buildDocument } from '../src/creative/templates';
+import { buildDocument, buildReelOverlay, subtitleBand } from '../src/creative/templates';
 import {
   buildSrt,
   clipCacheKey,
@@ -21,6 +21,7 @@ import {
   setVideoRenderDispatcher,
   splitCaption,
   startVideoRender,
+  subtitleStyle,
   updateVideoScene,
 } from '../src/services/video';
 import { ctxFor, pngBuffer, twoBrandFixture } from './helpers';
@@ -151,6 +152,19 @@ describe('motion composition (pure)', () => {
     const overVideo = buildDocument({ aspect: 'R9X16', copy: { headline: 'כותרת' }, kit, template: 'photo', backgroundIsVideo: true });
     expect(overVideo.template).toBe('photo');
     expect(overVideo.layers.some((l) => l.id === 'bg')).toBe(false);
+  });
+
+  it('keeps on-screen text, logo and subtitles in separate bands for every aspect', () => {
+    for (const aspect of ['R9X16', 'R4X5', 'R1X1', 'R16X9', 'R191X1'] as const) {
+      const doc = buildReelOverlay({ aspect, headline: 'כותרת ארוכה מאוד שצריכה להיכנס במסגרת', kit: { colors: {}, fonts: { heading: 'Rubik' }, logoMediaId: '0191f3a2-0000-7000-8000-000000000003' } });
+      const band = subtitleBand(aspect);
+      for (const l of doc.layers.filter((x) => x.type !== 'shape')) expect(l.box.y + l.box.h).toBeLessThanOrEqual(band.top);
+      expect(doc.fonts.heading).toBe('Rubik');
+      const marginV = Number(/MarginV=(\d+)/.exec(subtitleStyle(aspect))![1]);
+      // The subtitle baseline sits at the bottom of the band (libass PlayResY = 288).
+      expect(Math.abs(288 - marginV - (band.bottom / 100) * 288)).toBeLessThan(1.5);
+    }
+    expect(buildReelOverlay({ aspect: 'R9X16', headline: null, kit: { colors: {}, fonts: {}, logoMediaId: null } }).layers.map((l) => l.id)).toEqual(['shade-top', 'shade-bottom']);
   });
 
   it('cache keys change exactly when the inputs that cost money change', () => {

@@ -29,7 +29,7 @@ import { ASPECTS, documentMediaIds, splitForMotion } from '../creative/document'
 import type { CreativeDocument } from '../creative/document';
 import { fontsDir, renderFontSources } from '../creative/fonts';
 import { documentToHtml } from '../creative/html';
-import { buildDocument } from '../creative/templates';
+import { buildDocument, buildReelOverlay, subtitleBand } from '../creative/templates';
 import type { ComposeKit } from '../creative/templates';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { JOBS, QUEUES, getQueue } from '../jobs/queues';
@@ -621,10 +621,14 @@ export function buildSrt(scenes: { narration: string; durationMs: number }[]): s
   return cues.join('\n');
 }
 
-/** libass style for burnt-in Hebrew subtitles (FontSize is relative to libass PlayResY=288). */
-function subtitleStyle(aspect: VideoProject['aspect']): string {
-  const size = aspect === 'R9X16' ? 16 : aspect === 'R16X9' || aspect === 'R191X1' ? 13 : 15;
-  const marginV = aspect === 'R9X16' ? 70 : 28;
+/**
+ * libass style for burnt-in Hebrew subtitles (sizes and margins are relative to libass PlayResY=288).
+ * The bottom margin puts the captions inside the subtitle band reserved by the Reels overlay — above
+ * the area the platforms' own UI covers at the bottom of vertical videos.
+ */
+export function subtitleStyle(aspect: VideoProject['aspect']): string {
+  const size = aspect === 'R9X16' ? 15 : aspect === 'R16X9' || aspect === 'R191X1' ? 13 : 14;
+  const marginV = Math.round(((100 - subtitleBand(aspect).bottom) / 100) * 288);
   return `FontName=Heebo,FontSize=${size},Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H90000000,BackColour=&H90000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=${marginV},MarginL=40,MarginR=40,WrapStyle=0`;
 }
 
@@ -782,6 +786,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
       let clipMediaId: string | null = scene.clipMediaId;
       const motion: StillMotion = project.motionStills ? (i % 2 === 0 ? 'zoom-in' : 'zoom-out') : 'none';
       const headline = scene.onScreenText ?? '';
+      const reelOverlay = () => buildReelOverlay({ aspect: project.aspect, headline: scene.onScreenText, kit: rc.kit });
 
       if (scene.visualKind === 'CARD' || scene.visualKind === 'MEDIA' || scene.visualKind === 'AI_IMAGE') {
         const imageId = scene.visualKind === 'MEDIA' ? scene.mediaId : scene.visualKind === 'AI_IMAGE' ? await ensureSceneImage(rc, scene, cache) : null;
@@ -790,14 +795,15 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         const bgFile = path.join(dir, `scene-${scene.order}-bg.png`);
         await renderLayer(rc, bgDoc, false, bgFile);
         background = { kind: 'still', file: bgFile, motion };
-        overlay = foreground;
+        // Branded cards keep their own typography; photos get the Reels overlay so text never collides with subtitles.
+        overlay = imageId ? reelOverlay() : foreground;
       } else if (scene.visualKind === 'MEDIA_VIDEO') {
         if (!scene.mediaId) throw new ConflictError(`סצנה ${scene.order}: לא נבחר וידאו`);
         const { file } = await downloadMedia(ctx, scene.mediaId, path.join(dir, `scene-${scene.order}-library`));
         const info = await probeMedia(file);
         if (!info.hasVideo) throw new ConflictError(`סצנה ${scene.order}: קובץ הווידאו אינו קריא`);
         background = { kind: 'clip', file, clipMs: info.durationMs, hasAudio: info.hasAudio, audio: project.ambientAudio ? 'mix' : 'narration' };
-        overlay = splitForMotion(buildDocument({ aspect: project.aspect, copy: { headline }, kit: rc.kit, template: 'photo', backgroundIsVideo: true })).foreground;
+        overlay = reelOverlay();
       } else if (scene.visualKind === 'AI_VIDEO') {
         const ck = clipCacheKey(project, scene, character)!;
         let clipFile = await cachedClip(rc, scene, cache, ck, path.join(dir, `scene-${scene.order}-cached-clip`));
@@ -843,7 +849,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         }
         const info = await probeMedia(clipFile);
         background = { kind: 'clip', file: clipFile, clipMs: info.durationMs, hasAudio: hasAudio && info.hasAudio, audio: project.ambientAudio ? 'mix' : 'narration' };
-        overlay = splitForMotion(buildDocument({ aspect: project.aspect, copy: { headline }, kit: rc.kit, template: 'photo', backgroundIsVideo: true })).foreground;
+        overlay = reelOverlay();
       } else {
         // AVATAR — the character speaks the narration (audio-driven lip-sync).
         if (!character) throw new ConflictError(`סצנה ${scene.order}: יש לבחור דמות`);
@@ -874,7 +880,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         const info = await probeMedia(clipFile);
         // The lip-synced clip carries the narration itself — use its audio so lips and voice stay in sync.
         background = { kind: 'clip', file: clipFile, clipMs: info.durationMs, hasAudio: info.hasAudio, audio: info.hasAudio ? 'clip' : 'narration' };
-        overlay = splitForMotion(buildDocument({ aspect: project.aspect, copy: { headline }, kit: rc.kit, template: 'photo', backgroundIsVideo: true })).foreground;
+        overlay = reelOverlay();
       }
 
       // 3. Overlay (text / logo / legibility gradient) on a transparent canvas.

@@ -99,6 +99,7 @@ describe.skipIf(!enabled)('motion video pipeline (Chromium + FFmpeg, mock clip p
       const { pipeline } = await import('node:stream/promises');
       await pipeline((await openMediaObject(ctx, out!.id)).object.body, createWriteStream(outFile));
       const info = await probeMedia(outFile);
+      if (process.env.KEEP_RENDER_OUTPUT) await (await import('node:fs/promises')).copyFile(outFile, process.env.KEEP_RENDER_OUTPUT);
       expect(info.hasVideo && info.hasAudio).toBe(true);
       expect(info.width).toBe(1080);
       expect(info.height).toBe(1920);
