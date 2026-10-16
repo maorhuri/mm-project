@@ -85,7 +85,7 @@ export function Sidebar({ open, onClose, pendingApprovals }: SidebarProps) {
           <div className="flex flex-col gap-0.5">{planned.map(renderItem)}</div>
         </nav>
         <div className="border-t px-4 py-3 text-[11px] text-muted-foreground">
-          MM Marketing OS · Phase 1
+          MM Marketing OS · שלבים 1–3 באוויר · Meta (קריאה)
         </div>
       </aside>
     </>

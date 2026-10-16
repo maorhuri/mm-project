@@ -31,8 +31,24 @@ async function launch(): Promise<Browser> {
 
 function touch(): void {
   if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => void closeBrowser(), IDLE_MS);
+  idleTimer = setTimeout(() => void closeIfIdle(), IDLE_MS);
   idleTimer.unref();
+}
+
+async function closeIfIdle(): Promise<void> {
+  const pending = browserPromise;
+  if (!pending) return;
+  try {
+    const browser = await pending;
+    // A render is still in flight — check again later.
+    if (browser.contexts().length > 0) {
+      touch();
+      return;
+    }
+  } catch {
+    return;
+  }
+  await closeBrowser();
 }
 
 export async function getBrowser(): Promise<Browser> {

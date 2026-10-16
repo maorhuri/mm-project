@@ -3,7 +3,7 @@
  * the high-cost approval gate, records every call in the `ai_runs` ledger with
  * its ILS cost, and falls back across providers on retryable failures.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { AiRun, AiTaskType, Approval } from '@mm/db';
 import { getConfig } from '../config';
 import { AppError } from '../errors';
@@ -73,24 +73,43 @@ interface GateResult {
   approval: Approval | null;
 }
 
-/** Budget cap + high-cost approval gate. Throws before any provider is called. */
-async function gate(ctx: BrandContext, task: AiTaskType, label: string, estimateIls: number, approvalId: string | undefined, candidate: RouteCandidate, usage: AiUsage): Promise<GateResult> {
+/** An approval is usable for one run of the same task, within this window, for a similar estimate. */
+const APPROVAL_VOUCHER_HOURS = 24;
+
+/**
+ * Budget cap + high-cost approval gate. Throws before any provider is called.
+ * Above the single-run cap the request is turned into an AI_HIGH_COST approval keyed by the
+ * task + prompt hash (retrying the same request never creates a second pending approval). Once
+ * approved, repeating the request consumes that approval (explicit `approvalId` or an automatic
+ * lookup) and the run marks it EXECUTED, so one approval pays for exactly one run.
+ */
+async function gate(ctx: BrandContext, task: AiTaskType, label: string, estimateIls: number, approvalId: string | undefined, candidate: RouteCandidate, usage: AiUsage, requestHash: string): Promise<GateResult> {
   const cfg = getConfig();
   if (!cfg.AI_ENABLED) throw new AiPausedError();
   let approval: Approval | null = null;
   if (!candidate.isMock && estimateIls > cfg.AI_SINGLE_RUN_MAX_ILS) {
+    const subjectId = `${task}:${requestHash}`;
     if (approvalId) {
       approval = await getApproval(ctx, approvalId);
-      if (approval.status !== 'APPROVED' || approval.subjectType !== 'ai_task') throw new AiApprovalRequiredError(approval.id, estimateIls);
     } else {
+      // Automatic voucher: an APPROVED (not yet executed) approval for this exact request.
+      approval = await ctx.db.approval.findFirst({
+        where: { subjectType: 'ai_task', subjectId, status: 'APPROVED', decidedAt: { gte: new Date(Date.now() - APPROVAL_VOUCHER_HOURS * 60 * 60 * 1000) } },
+        orderBy: { decidedAt: 'desc' },
+      });
+    }
+    if (approval && (approval.subjectType !== 'ai_task' || approval.status !== 'APPROVED')) {
+      throw new AiApprovalRequiredError(approval.id, estimateIls);
+    }
+    if (!approval) {
       const created = await requestApproval(ctx, {
         type: 'AI_HIGH_COST',
         title: `פעולת AI יקרה: ${label}`,
-        summary: `עלות משוערת ${estimateIls.toFixed(2)} ₪ (מעל התקרה לפעולה בודדת ${cfg.AI_SINGLE_RUN_MAX_ILS} ₪)`,
+        summary: `עלות משוערת ${estimateIls.toFixed(2)} ₪ (מעל התקרה לפעולה בודדת ${cfg.AI_SINGLE_RUN_MAX_ILS} ₪). אחרי האישור — הפעילו את אותה פעולה שוב.`,
         subjectType: 'ai_task',
-        subjectId: `${task}:${randomUUID()}`,
+        subjectId,
         estimatedCostIls: estimateIls,
-        payload: { task, estimateIls, model: candidate.spec.modelId, provider: candidate.spec.provider },
+        payload: { task, label, estimateIls, model: candidate.spec.modelId, provider: candidate.spec.provider },
       });
       throw new AiApprovalRequiredError(created.id, estimateIls);
     }
@@ -195,7 +214,8 @@ export async function runText(ctx: BrandContext, opts: RunTextOptions): Promise<
   const inputTokens = Math.ceil((opts.system.length + opts.prompt.length) * TOKENS_PER_CHAR) + (opts.images?.length ?? 0) * 1500;
   const outputTokens = opts.maxOutputTokens ?? 2000;
   const estimateIls = primary.isMock ? 0 : estimateCostIls(primary.spec, { inputTokens, outputTokens }, cfg.USD_ILS_RATE);
-  const { approval } = await gate(ctx, opts.task, opts.label ?? opts.task, estimateIls, opts.approvalId, primary, usage);
+  const requestHash = hashOf(opts.system, opts.prompt);
+  const { approval } = await gate(ctx, opts.task, opts.label ?? opts.task, estimateIls, opts.approvalId, primary, usage, requestHash);
 
   const run = await ctx.db.aiRun.create({
     data: {
@@ -206,7 +226,7 @@ export async function runText(ctx: BrandContext, opts: RunTextOptions): Promise<
       status: 'RUNNING',
       costIls: estimateIls,
       estimated: true,
-      promptHash: hashOf(opts.system, opts.prompt),
+      promptHash: requestHash,
       factsHash: opts.factsHash ?? null,
       requestedById: ctx.actor.userId || null,
       approvalId: approval?.id ?? null,
@@ -306,7 +326,8 @@ export async function runImage(ctx: BrandContext, opts: RunImageOptions): Promis
   const n = opts.n ?? 1;
   const qualityFactor = opts.quality === 'high' ? 2 : opts.quality === 'low' ? 0.5 : 1;
   const estimateIls = primary.isMock ? 0 : estimateCostIls(primary.spec, { images: n }, cfg.USD_ILS_RATE) * qualityFactor;
-  const { approval } = await gate(ctx, task, opts.label ?? 'יצירת תמונה', estimateIls, opts.approvalId, primary, usage);
+  const requestHash = hashOf(opts.prompt, `${opts.width}x${opts.height}`, opts.quality, String(n));
+  const { approval } = await gate(ctx, task, opts.label ?? 'יצירת תמונה', estimateIls, opts.approvalId, primary, usage, requestHash);
 
   const run = await ctx.db.aiRun.create({
     data: {
@@ -318,7 +339,7 @@ export async function runImage(ctx: BrandContext, opts: RunImageOptions): Promis
       images: n,
       costIls: estimateIls,
       estimated: true,
-      promptHash: hashOf(opts.prompt),
+      promptHash: requestHash,
       requestedById: ctx.actor.userId || null,
       approvalId: approval?.id ?? null,
       metadata: { ...(opts.metadata ?? {}), label: opts.label ?? null, mock: primary.isMock, estimateIls, size: `${opts.width}x${opts.height}`, quality: opts.quality },
@@ -393,7 +414,8 @@ export async function runTts(ctx: BrandContext, opts: RunTtsOptions): Promise<Ru
   const candidates = await routeCandidates(ctx.orgId, ctx.brandId, 'TTS', { kind: 'tts', softBudget: usage.softHit, allowMock: mockAllowed(ctx) });
   const primary = candidates[0]!;
   const estimateIls = primary.isMock ? 0 : estimateCostIls(primary.spec, { characters: opts.text.length }, cfg.USD_ILS_RATE);
-  const { approval } = await gate(ctx, 'TTS', opts.label ?? 'קריינות', estimateIls, opts.approvalId, primary, usage);
+  const requestHash = hashOf(opts.text, opts.voice ?? 'alloy');
+  const { approval } = await gate(ctx, 'TTS', opts.label ?? 'קריינות', estimateIls, opts.approvalId, primary, usage, requestHash);
   const run = await ctx.db.aiRun.create({
     data: {
       brandId: ctx.brandId,
@@ -404,7 +426,7 @@ export async function runTts(ctx: BrandContext, opts: RunTtsOptions): Promise<Ru
       characters: opts.text.length,
       costIls: estimateIls,
       estimated: true,
-      promptHash: hashOf(opts.text),
+      promptHash: requestHash,
       requestedById: ctx.actor.userId || null,
       approvalId: approval?.id ?? null,
       metadata: { ...(opts.metadata ?? {}), label: opts.label ?? null, mock: primary.isMock, voice: opts.voice ?? 'alloy' },

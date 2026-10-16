@@ -36,7 +36,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
   return (
     <>
-      <PageHeader title="אינטגרציות" description={`${ctx.brand.name} · מפתחות AI הם ארגוניים (משותפים לכל המותגים) ונשמרים מוצפנים. Meta ו-Google Ads יתחברו ב-OAuth בשלבים 4–5.`} />
+      <PageHeader title="אינטגרציות" description={`${ctx.brand.name} · מפתחות AI הם ארגוניים (משותפים לכל המותגים) ונשמרים מוצפנים. Meta מתחבר כאן ב-SSO (קריאה בלבד בשלב זה); Google Ads יתחבר בשלב 5.`} />
       <Alert variant="info">
         <Plug />
         <AlertTitle>מפתח OpenAI אחד מספיק לכל שלב 2–3 (טקסט, תמונות וקריינות)</AlertTitle>

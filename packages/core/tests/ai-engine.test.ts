@@ -159,12 +159,23 @@ describe('AI engine — real-provider gates (fake adapter behind a saved key)', 
       // Still refused while pending, even when the id is supplied.
       await expect(runText(ctx, { task: 'STRATEGY_BRIEF', system: 's', prompt: 'p', approvalId })).rejects.toBeInstanceOf(AiApprovalRequiredError);
 
+      // Retrying the same request does not create a second pending approval.
+      await expect(runText(ctx, { task: 'STRATEGY_BRIEF', label: 'בריף', system: 's', prompt: 'p' })).rejects.toBeInstanceOf(AiApprovalRequiredError);
+      expect((await listApprovals(ctx, { status: 'PENDING', page: 1, pageSize: 10 })).total).toBe(1);
+
       await decideApproval(ctx, approvalId, { decision: 'APPROVED' });
-      const result = await runText(ctx, { task: 'STRATEGY_BRIEF', system: 's', prompt: 'p', approvalId });
+      // The approved request is redeemed automatically when the same request is repeated (no id needed).
+      const result = await runText(ctx, { task: 'STRATEGY_BRIEF', system: 's', prompt: 'p' });
       expect(result.text).toBe('done');
       expect(result.run.approvalId).toBe(approvalId);
       const approval = await ctx.db.approval.findUnique({ where: { id: approvalId } });
       expect(approval?.status).toBe('EXECUTED');
+      // One approval pays for exactly one run: the next repeat needs a fresh approval.
+      await expect(runText(ctx, { task: 'STRATEGY_BRIEF', system: 's', prompt: 'p' })).rejects.toBeInstanceOf(AiApprovalRequiredError);
+      expect((await listApprovals(ctx, { status: 'PENDING', page: 1, pageSize: 10 })).total).toBe(1);
+      // An explicit id that is already executed is refused.
+      await expect(runText(ctx, { task: 'STRATEGY_BRIEF', system: 's', prompt: 'p', approvalId })).rejects.toBeInstanceOf(AiApprovalRequiredError);
+      expect(adapter.calls).toBe(1);
     } finally {
       restore();
     }

@@ -44,7 +44,8 @@ const ils = (n: number) => `${n.toFixed(n < 1 ? 3 : 2)} ₪`;
 export function VideoWorkspace({ brandId, canEdit, project, scenes, product, estimate, images }: Props) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
-  const rendering = project.status === 'RENDERING';
+  const staleRender = project.status === 'RENDERING' && Date.now() - new Date(project.updatedAt).getTime() > 30 * 60_000;
+  const rendering = project.status === 'RENDERING' && !staleRender;
 
   useEffect(() => {
     if (!rendering) return;
@@ -88,6 +89,13 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
         }
       />
 
+      {staleRender ? (
+        <Alert variant="warning">
+          <Film />
+          <AlertTitle>הרינדור לא מדווח התקדמות כבר יותר מ-30 דקות</AlertTitle>
+          <AlertDescription>ייתכן שה-worker הופסק. אפשר להפעיל רינדור מחדש.</AlertDescription>
+        </Alert>
+      ) : null}
       {rendering ? (
         <Alert variant="info">
           <Film className="animate-pulse" />

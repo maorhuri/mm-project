@@ -313,6 +313,9 @@ export async function loadComposeKit(ctx: BrandContext): Promise<ComposeKit> {
   };
 }
 
+/** A queued/running render older than this may be re-queued (the worker may have died). */
+export const STALE_CREATIVE_RENDER_MS = 30 * 60_000;
+
 type RenderDispatcher = (ctx: BrandContext, versionId: string) => Promise<void>;
 
 const defaultDispatcher: RenderDispatcher = async (ctx, versionId) => {
@@ -525,7 +528,8 @@ export async function generateCreativeBackground(ctx: BrandContext, projectId: s
 export async function rerenderCreativeVersion(ctx: BrandContext, versionId: string): Promise<void> {
   assertBrandRole(ctx, 'EDITOR');
   const version = await getCreativeVersion(ctx, versionId);
-  if (version.renderStatus === 'RENDERING') throw new ConflictError('הגרסה מרונדרת כעת');
+  const stale = version.createdAt.getTime() < Date.now() - STALE_CREATIVE_RENDER_MS;
+  if ((version.renderStatus === 'RENDERING' || version.renderStatus === 'PENDING') && !stale) throw new ConflictError('הגרסה כבר בתור הרינדור');
   await enqueueCreativeRender(ctx, versionId);
 }
 

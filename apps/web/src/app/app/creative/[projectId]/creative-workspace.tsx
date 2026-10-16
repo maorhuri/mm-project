@@ -296,7 +296,7 @@ export function CreativeWorkspace({ brandId, canEdit, project, versions, ideas, 
                           <Link href="/app/approvals">למרכז האישורים</Link>
                         </Button>
                       ) : null}
-                      {canEdit && (v.renderStatus === 'FAILED' || v.renderStatus === 'READY') ? (
+                      {canEdit && (v.renderStatus === 'FAILED' || v.renderStatus === 'READY' || Date.now() - new Date(v.createdAt).getTime() > 30 * 60_000) ? (
                         <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(rerenderAction(project.id, v.id))}>
                           <RefreshCw /> רינדור מחדש
                         </Button>

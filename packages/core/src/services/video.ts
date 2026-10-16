@@ -271,6 +271,9 @@ export async function updateVideoScene(ctx: BrandContext, sceneId: string, input
 // Render (worker)
 // ---------------------------------------------------------------------------
 
+/** A render that has not reported progress for this long is considered dead (worker crash) and may be restarted. */
+export const STALE_RENDER_MS = 30 * 60_000;
+
 type RenderDispatcher = (ctx: BrandContext, projectId: string) => Promise<void>;
 const defaultDispatcher: RenderDispatcher = async (ctx, projectId) => {
   await getQueue(QUEUES.video).add(
@@ -287,7 +290,8 @@ export function setVideoRenderDispatcher(fn: RenderDispatcher | null): void {
 export async function startVideoRender(ctx: BrandContext, projectId: string): Promise<VideoProject> {
   assertBrandRole(ctx, 'EDITOR');
   const { project, scenes } = await getVideoProject(ctx, projectId);
-  if (project.status === 'RENDERING') throw new ConflictError('הסרטון כבר מרונדר');
+  const stale = project.status === 'RENDERING' && project.updatedAt.getTime() < Date.now() - STALE_RENDER_MS;
+  if (project.status === 'RENDERING' && !stale) throw new ConflictError('הסרטון כבר מרונדר');
   if (scenes.length === 0) throw new ConflictError('אין סצנות — צרו תסריט תחילה');
   const qa = project.qa as unknown as QaReport | null;
   if (qa?.status === 'BLOCKED') throw new ConflictError('בקרת האיכות חסמה את התסריט — תקנו את הסצנות המסומנות');
