@@ -451,7 +451,7 @@ export async function loadImageDataUrls(ctx: BrandContext, mediaIds: string[]): 
 }
 
 export interface RenderBackend {
-  renderHtml(html: string, opts: { width: number; height: number }): Promise<{ png: Buffer; warnings: RenderWarning[]; fitted: Record<string, number>; durationMs: number }>;
+  renderHtml(html: string, opts: { width: number; height: number; transparent?: boolean }): Promise<{ png: Buffer; warnings: RenderWarning[]; fitted: Record<string, number>; durationMs: number }>;
   encodeVariants(png: Buffer): Promise<{ jpg: Buffer; webp: Buffer }>;
 }
 

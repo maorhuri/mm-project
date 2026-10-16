@@ -40,6 +40,8 @@ export interface ComposeInput {
   kit: ComposeKit;
   template: TemplateId;
   backgroundMediaId?: string | null;
+  /** The background is a video composited underneath (photo layout without an image layer). */
+  backgroundIsVideo?: boolean;
 }
 
 type Family = 'square' | 'tall' | 'wide';
@@ -155,7 +157,7 @@ export function buildDocument(input: ComposeInput): CreativeDocument {
   const cta = clean(input.copy.cta);
   const price = clean(input.copy.price);
   const badge = clean(input.copy.badge);
-  const hasImage = Boolean(input.backgroundMediaId);
+  const hasImage = Boolean(input.backgroundMediaId) || Boolean(input.backgroundIsVideo);
   const template: TemplateId = input.template === 'photo' && !hasImage ? 'bold' : input.template;
   const variant: Variant = template === 'photo' || (template === 'clean' && hasImage) ? 'bottom' : 'top';
   const L = layoutFor(family, variant);
@@ -178,7 +180,7 @@ export function buildDocument(input: ComposeInput): CreativeDocument {
     ctaBg = primary;
     ctaColor = textOn(primary);
     priceColor = '#ffffff';
-    layers.push({ id: 'bg', type: 'image', role: 'background', mediaId: input.backgroundMediaId ?? null, box: { x: 0, y: 0, w: 100, h: 100 }, fit: 'cover', opacity: 1, radius: 0 });
+    if (!input.backgroundIsVideo) layers.push({ id: 'bg', type: 'image', role: 'background', mediaId: input.backgroundMediaId ?? null, box: { x: 0, y: 0, w: 100, h: 100 }, fit: 'cover', opacity: 1, radius: 0 });
     layers.push({
       id: 'overlay',
       type: 'shape',
@@ -199,7 +201,7 @@ export function buildDocument(input: ComposeInput): CreativeDocument {
     badgeBg = primary;
     badgeColor = textOn(primary);
     layers.push({ id: 'bar', type: 'shape', role: 'accent', box: { x: 0, y: 0, w: 100, h: family === 'wide' ? 3 : 1.6 }, color: primary, opacity: 1, radius: 0, gradient: null });
-    if (hasImage) {
+    if (hasImage && !input.backgroundIsVideo) {
       const photoBox: Box = family === 'wide' ? { x: 50, y: 10, w: 46, h: 80 } : family === 'tall' ? { x: 6, y: 20, w: 88, h: 28 } : { x: 6, y: 16, w: 88, h: 32 };
       layers.push({ id: 'photo', type: 'image', role: 'photo', mediaId: input.backgroundMediaId ?? null, box: photoBox, fit: 'cover', opacity: 1, radius: px(28) });
     }

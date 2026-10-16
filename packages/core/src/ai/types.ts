@@ -4,9 +4,9 @@
  */
 import type { AiTaskType } from '@mm/db';
 import { AppError } from '../errors';
-import type { AiModelKind, AiProviderId, AiTier, ModelSpec } from './catalog';
+import type { AiModelKind, AiProviderId, AiTier, ModelSpec, VideoAspect } from './catalog';
 
-export type { AiModelKind, AiProviderId, AiTier, ModelSpec };
+export type { AiModelKind, AiProviderId, AiTier, ModelSpec, VideoAspect };
 
 export interface InlineImage {
   data: Buffer;
@@ -86,6 +86,70 @@ export interface TtsAdapter {
   synthesize(modelId: string, req: TtsRequest, signal?: AbortSignal): Promise<TtsResult>;
 }
 
+export interface AudioInput {
+  data: Buffer;
+  mimeType: string;
+  durationMs: number;
+}
+
+export interface VideoClipRequest {
+  prompt: string;
+  negativePrompt?: string;
+  /** Start frame / subject (image-to-video). */
+  image?: InlineImage;
+  /** Subject references for consistency (character sheets). */
+  referenceImages?: InlineImage[];
+  aspect: VideoAspect;
+  /** Wanted length; the adapter snaps to the model's allowed durations. */
+  seconds: number;
+  resolution?: string;
+  /** Generate native sound (ambience / effects). */
+  audio?: boolean;
+}
+
+export interface TalkingAvatarRequest {
+  /** The character (portrait / bust works best). */
+  image: InlineImage;
+  /** The narration to lip-sync (any language — the motion is driven by the audio). */
+  audio: AudioInput;
+  /** Optional guidance: expression, gestures, camera. */
+  prompt?: string;
+  aspect: VideoAspect;
+  resolution?: string;
+}
+
+export interface VideoClipResult {
+  video: Buffer;
+  mimeType: string;
+  /** Seconds billed / generated. */
+  seconds: number;
+  hasAudio: boolean;
+  modelId: string;
+  jobId: string | null;
+  latencyMs: number;
+}
+
+export type VideoProgress = (pct: number, note?: string) => void;
+
+export interface VideoJobOptions {
+  signal?: AbortSignal;
+  onProgress?: VideoProgress;
+  /** Give up waiting after this long (default 15 min). */
+  timeoutMs?: number;
+}
+
+export interface VideoAdapter {
+  readonly provider: AiProviderId;
+  readonly isMock: boolean;
+  generate(spec: ModelSpec, req: VideoClipRequest, opts?: VideoJobOptions): Promise<VideoClipResult>;
+}
+
+export interface AvatarAdapter {
+  readonly provider: AiProviderId;
+  readonly isMock: boolean;
+  generate(spec: ModelSpec, req: TalkingAvatarRequest, opts?: VideoJobOptions): Promise<VideoClipResult>;
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -102,7 +166,8 @@ export class AiProviderError extends AppError {
 
 export class AiNoProviderError extends AppError {
   constructor(kind: AiModelKind) {
-    super(503, 'ai_no_provider', `לא מחובר ספק AI עבור ${kind === 'image' ? 'תמונות' : kind === 'tts' ? 'קריינות' : 'טקסט'} — הגדירו מפתח בעמוד האינטגרציות`);
+    const what = kind === 'image' ? 'תמונות' : kind === 'tts' ? 'קריינות' : kind === 'video' ? 'וידאו (תנועה)' : kind === 'avatar' ? 'דמויות מדברות' : 'טקסט';
+    super(503, 'ai_no_provider', `לא מחובר ספק AI עבור ${what} — הגדירו מפתח בעמוד האינטגרציות`);
   }
 }
 
@@ -132,6 +197,10 @@ export class AiOutputInvalidError extends AppError {
   }
 }
 
+/** Providers that can serve motion clips / talking avatars, in preference order (configured with the catalog). */
+export const VIDEO_PROVIDERS: AiProviderId[] = ['google'];
+export const AVATAR_PROVIDERS: AiProviderId[] = ['google'];
+
 export interface TaskDefaults {
   kind: AiModelKind;
   tier: AiTier;
@@ -149,4 +218,7 @@ export const TASK_DEFAULTS: Record<AiTaskType, TaskDefaults> = {
   VIDEO_SCRIPT: { kind: 'text', tier: 'balanced', preferProviders: ['anthropic', 'openai', 'google'] },
   TTS: { kind: 'tts', tier: 'balanced', preferProviders: ['openai'] },
   OTHER: { kind: 'text', tier: 'balanced', preferProviders: ['openai', 'anthropic', 'google'] },
+  VIDEO_CLIP: { kind: 'video', tier: 'balanced', preferProviders: VIDEO_PROVIDERS },
+  AVATAR_VIDEO: { kind: 'avatar', tier: 'balanced', preferProviders: AVATAR_PROVIDERS },
+  CHARACTER_IMAGE: { kind: 'image', tier: 'balanced', preferProviders: ['openai', 'google'] },
 };

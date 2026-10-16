@@ -13,6 +13,8 @@ export interface HtmlOptions {
   images: Record<string, string>;
   /** Font sources per family. Required for render mode (data: URIs from `renderFontSources()`); preview defaults to /fonts/*. */
   fontSrc?: Partial<Record<FontFamily, string>>;
+  /** Transparent canvas (overlay layers composited over video by FFmpeg). */
+  transparent?: boolean;
 }
 
 export interface RenderWarning {
@@ -131,7 +133,7 @@ export function documentToHtml(doc: CreativeDocument, opts: HtmlOptions): string
 <style>
 ${faces}
 html,body{margin:0;padding:0;background:transparent}
-#canvas{position:relative;width:${doc.width}px;height:${doc.height}px;overflow:hidden;background:${doc.background};direction:rtl;font-family:'${doc.fonts.body}',sans-serif;-webkit-font-smoothing:antialiased}
+#canvas{position:relative;width:${doc.width}px;height:${doc.height}px;overflow:hidden;background:${opts.transparent ? 'transparent' : doc.background};direction:rtl;font-family:'${doc.fonts.body}',sans-serif;-webkit-font-smoothing:antialiased}
 .layer{position:absolute;box-sizing:border-box}
 .text{display:flex;flex-direction:column;overflow:hidden}
 .text .inner{white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box;max-width:100%}

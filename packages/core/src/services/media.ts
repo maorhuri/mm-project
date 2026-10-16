@@ -217,6 +217,21 @@ export async function updateMedia(
   return after;
 }
 
+/** Read a media object fully into memory (bounded). */
+export async function readMediaBuffer(ctx: BrandContext, mediaId: string, maxBytes = 50 * 1024 * 1024): Promise<{ asset: MediaAsset; data: Buffer }> {
+  const { asset, object } = await openMediaObject(ctx, mediaId);
+  if (asset.sizeBytes > maxBytes) throw new PayloadTooLargeError('Media file is too large for this operation');
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of object.body) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    total += buf.length;
+    if (total > maxBytes) throw new PayloadTooLargeError('Media file is too large for this operation');
+    chunks.push(buf);
+  }
+  return { asset, data: Buffer.concat(chunks) };
+}
+
 /** Soft-delete the record and remove the object from storage. */
 export async function deleteMedia(ctx: BrandContext, mediaId: string): Promise<void> {
   assertBrandRole(ctx, 'EDITOR');

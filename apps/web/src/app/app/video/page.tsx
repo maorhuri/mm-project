@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Clapperboard } from 'lucide-react';
+import { Clapperboard, UserRound } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { listProducts, listVideoProjects } from '@mm/core';
 import { ASPECTS } from '@mm/core/creative';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -20,8 +21,17 @@ export default async function VideoPage() {
     <>
       <PageHeader
         title="סטודיו וידאו"
-        description={`${ctx.brand.name} · סרטונים קצרים: תסריט → קריינות עברית → סצנות ממותגות → MP4 עם כתוביות צרובות. העלות מוצגת לפני הרינדור ונרשמת ביומן ה-AI.`}
-        actions={canEdit ? <CreateVideoDialog products={productOptions} /> : null}
+        description={`${ctx.brand.name} · סרטונים קצרים ורילס: תסריט → קריינות עברית → סצנות עם תנועה (וידאו AI, דמויות מדברות, תמונות עם זום) → MP4 עם כתוביות צרובות. העלות מוצגת לפני הרינדור ונרשמת ביומן ה-AI.`}
+        actions={
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link href="/app/video/characters">
+                <UserRound /> דמויות המותג
+              </Link>
+            </Button>
+            {canEdit ? <CreateVideoDialog products={productOptions} /> : null}
+          </div>
+        }
       />
       {projects.length === 0 ? (
         <EmptyState icon={Clapperboard} title="אין עדיין סרטונים" description="צרו פרויקט, בקשו תסריט, ערכו את הסצנות ורנדרו." action={canEdit ? <CreateVideoDialog products={productOptions} /> : null} />

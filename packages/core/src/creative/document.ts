@@ -136,3 +136,19 @@ export function documentCopy(doc: CreativeDocument): Record<string, string> {
 export function documentMediaIds(doc: CreativeDocument): string[] {
   return [...new Set(doc.layers.flatMap((l) => (l.type === 'image' && l.mediaId && !l.hidden ? [l.mediaId] : [])))];
 }
+
+/** Layers that stay still over a moving background: text, the logo and legibility gradients. */
+export function isForegroundLayer(layer: CreativeLayer): boolean {
+  return layer.type === 'text' || (layer.type === 'image' && layer.role === 'logo') || (layer.type === 'shape' && layer.role === 'overlay');
+}
+
+/**
+ * Split a document for motion: the background (image / colour / accents — zoomed or replaced by
+ * a video) and the foreground overlay rendered on a transparent canvas and composited on top.
+ */
+export function splitForMotion(doc: CreativeDocument): { background: CreativeDocument; foreground: CreativeDocument } {
+  return {
+    background: { ...doc, layers: doc.layers.filter((l) => !isForegroundLayer(l)) },
+    foreground: { ...doc, layers: doc.layers.filter(isForegroundLayer) },
+  };
+}

@@ -344,12 +344,38 @@ export const videoScriptRequestSchema = z.object({
   extra: optionalText(1000),
 });
 
+export const sceneVisualKindSchema = z.enum(['CARD', 'MEDIA', 'AI_IMAGE', 'MEDIA_VIDEO', 'AI_VIDEO', 'AVATAR']);
+
 export const videoSceneUpdateSchema = z.object({
   narration: z.string().trim().min(1, 'חובה קריינות').max(600),
   onScreenText: optionalText(120),
-  visualKind: z.enum(['CARD', 'MEDIA', 'AI_IMAGE']).default('CARD'),
+  visualKind: sceneVisualKindSchema.default('CARD'),
   mediaId: z.string().uuid().nullable().optional(),
-  visualPrompt: optionalText(600),
+  visualPrompt: optionalText(800),
+  motionPrompt: optionalText(500),
+  characterId: z.string().uuid().nullable().optional(),
+});
+
+export const videoTierSchema = z.enum(['economy', 'balanced', 'flagship']);
+
+export const videoSettingsSchema = z.object({
+  voice: ttsVoiceSchema,
+  motionStills: z.boolean(),
+  videoTier: videoTierSchema,
+  ambientAudio: z.boolean(),
+});
+
+export const characterSchema = z.object({
+  name: z.string().trim().min(2, 'שם קצר מדי').max(60),
+  description: optionalText(800),
+  imageMediaId: z.string().uuid('בחרו תמונה לדמות'),
+  voice: ttsVoiceSchema.default('alloy'),
+  voiceInstructions: optionalText(300),
+});
+
+export const characterImageRequestSchema = z.object({
+  description: z.string().trim().min(5, 'תארו את הדמות').max(800),
+  style: optionalText(300),
 });
 
 export type CreativeProjectInput = z.infer<typeof creativeProjectSchema>;
@@ -362,6 +388,9 @@ export type BriefRequestInput = z.infer<typeof briefRequestSchema>;
 export type VideoProjectInput = z.infer<typeof videoProjectSchema>;
 export type VideoScriptRequestInput = z.infer<typeof videoScriptRequestSchema>;
 export type VideoSceneUpdateInput = z.infer<typeof videoSceneUpdateSchema>;
+export type VideoSettingsInput = z.infer<typeof videoSettingsSchema>;
+export type CharacterInput = z.infer<typeof characterSchema>;
+export type CharacterImageRequestInput = z.infer<typeof characterImageRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // Meta (Facebook) integration

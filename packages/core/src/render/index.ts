@@ -92,6 +92,8 @@ export interface RenderOptions {
   height: number;
   /** Device scale factor (2 = retina). Counts toward RENDER_MAX_PIXELS. */
   scale?: number;
+  /** Keep the page background transparent (PNG with alpha). */
+  transparent?: boolean;
   timeoutMs?: number;
 }
 
@@ -125,7 +127,7 @@ export async function renderHtml(html: string, opts: RenderOptions): Promise<Ren
     await page.setContent(html, { waitUntil: 'load', timeout });
     await page.waitForFunction(() => (globalThis as unknown as { __mm?: PageState }).__mm?.done === true, undefined, { timeout });
     const state = await page.evaluate(() => (globalThis as unknown as { __mm: PageState }).__mm);
-    const png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: opts.width, height: opts.height }, animations: 'disabled', caret: 'hide', timeout });
+    const png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: opts.width, height: opts.height }, animations: 'disabled', caret: 'hide', omitBackground: Boolean(opts.transparent), timeout });
     return { png, warnings: state.warnings ?? [], fitted: state.fitted ?? {}, durationMs: Date.now() - started };
   } finally {
     await context.close().catch(() => undefined);

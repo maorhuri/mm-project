@@ -15,7 +15,7 @@ export interface IntegrationCatalogEntry {
 export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
   { provider: 'openai', kind: 'AI_TEXT', label: 'OpenAI — טקסט, תמונות וקריינות', phase: 2, scope: 'org' },
   { provider: 'anthropic', kind: 'AI_TEXT', label: 'Anthropic Claude — טקסט, QA ואסטרטגיה', phase: 2, scope: 'org' },
-  { provider: 'google', kind: 'AI_TEXT', label: 'Google Gemini — טקסט ותמונות', phase: 2, scope: 'org' },
+  { provider: 'google', kind: 'AI_TEXT', label: 'Google Gemini — טקסט, תמונות ווידאו (Veo)', phase: 2, scope: 'org' },
   { provider: 'meta', kind: 'META', label: 'Meta — Facebook Page / Instagram / Ads', phase: 4, scope: 'brand' },
   { provider: 'google_ads', kind: 'GOOGLE_ADS', label: 'Google Ads', phase: 5, scope: 'brand' },
   { provider: 'linkedin', kind: 'LINKEDIN', label: 'LinkedIn Pages', phase: 6, scope: 'brand' },

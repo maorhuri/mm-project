@@ -5,12 +5,15 @@ import {
   createVideoProject,
   deleteVideoProject,
   generateVideoScript,
+  isAppError,
   requestVideoApproval,
   startVideoRender,
   updateVideoScene,
+  updateVideoSettings,
   videoProjectSchema,
   videoSceneUpdateSchema,
   videoScriptRequestSchema,
+  videoSettingsSchema,
 } from '@mm/core';
 import { numberOrNull, optionalStr, runAction, str } from '@/lib/actions';
 import type { ActionResult, ActionState } from '@/lib/actions';
@@ -61,6 +64,8 @@ export async function updateSceneAction(projectId: string, sceneId: string, prev
       visualKind: str(formData, 'visualKind') || undefined,
       mediaId: optionalStr(formData, 'mediaId'),
       visualPrompt: optionalStr(formData, 'visualPrompt'),
+      motionPrompt: optionalStr(formData, 'motionPrompt'),
+      characterId: optionalStr(formData, 'characterId'),
     });
     await updateVideoScene(ctx, sceneId, input);
     refresh(projectId);
@@ -68,12 +73,37 @@ export async function updateSceneAction(projectId: string, sceneId: string, prev
   }, formData, prev);
 }
 
+export async function updateSettingsAction(projectId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await requireBrandContext();
+    const input = videoSettingsSchema.parse({
+      voice: str(formData, 'voice'),
+      motionStills: formData.get('motionStills') === 'on',
+      videoTier: str(formData, 'videoTier'),
+      ambientAudio: formData.get('ambientAudio') === 'on',
+    });
+    await updateVideoSettings(ctx, projectId, input);
+    refresh(projectId);
+    return { message: 'הגדרות הסרטון נשמרו' };
+  }, formData, prev);
+}
+
 export async function startRenderAction(projectId: string): Promise<ActionResult> {
   return runAction(async () => {
     const ctx = await requireBrandContext();
-    await startVideoRender(ctx, projectId);
+    try {
+      await startVideoRender(ctx, projectId);
+    } catch (err) {
+      if (isAppError(err) && err.code === 'ai_approval_required') {
+        refresh(projectId);
+        revalidatePath('/app/approvals');
+        revalidatePath('/app', 'layout');
+        return { message: `${err.message}. הרינדור יתחיל אוטומטית ברגע שמנהל המותג יאשר.`, data: { approvalRequired: true } };
+      }
+      throw err;
+    }
     refresh(projectId);
-    return { message: 'הרינדור התחיל — קריינות, ויז\'ואלים והרכבה. זה לוקח כמה דקות.' };
+    return { message: 'הרינדור התחיל — קריינות, ויז\'ואלים והרכבה. קליפים של AI עשויים לקחת כמה דקות.' };
   });
 }
 

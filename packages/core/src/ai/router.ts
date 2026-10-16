@@ -41,6 +41,22 @@ export function orderByTier(models: ModelSpec[], tier: AiTier): ModelSpec[] {
   });
 }
 
+/** Placeholder spec for labelled mocks when the catalog has no model of that kind yet. */
+function mockSpec(provider: AiProviderId, kind: AiModelKind, tier: AiTier): ModelSpec {
+  return {
+    provider,
+    modelId: `mock-${kind}`,
+    kind,
+    tier,
+    displayName: `Mock ${kind}`,
+    pricing: {},
+    capabilities: kind === 'video' ? { durations: [4, 6, 8], aspects: ['9:16', '16:9'], imageInput: true } : kind === 'avatar' ? { aspects: ['9:16', '16:9', '1:1'], maxAudioSeconds: 60 } : {},
+    qualityRank: 0,
+    verifiedAt: 'mock',
+    source: 'mock',
+  };
+}
+
 export async function routeCandidates(orgId: string, brandId: string, task: AiTaskType, opts: RouteOptions): Promise<RouteCandidate[]> {
   const defaults = TASK_DEFAULTS[task];
   const kind = opts.kind ?? defaults.kind;
@@ -54,8 +70,8 @@ export async function routeCandidates(orgId: string, brandId: string, task: AiTa
   }
   if (candidates.length > 0) return candidates;
   if (opts.allowMock) {
-    const spec = orderByTier(catalogFor(providers[0] ?? 'openai', kind), tier)[0];
-    if (spec) return [{ spec, apiKey: null, isMock: true }];
+    const spec = orderByTier(catalogFor(providers[0] ?? 'openai', kind), tier)[0] ?? mockSpec(providers[0] ?? 'openai', kind, tier);
+    return [{ spec, apiKey: null, isMock: true }];
   }
   throw new AiNoProviderError(kind);
 }

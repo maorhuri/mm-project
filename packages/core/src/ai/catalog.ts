@@ -7,7 +7,8 @@
  */
 
 export type AiProviderId = 'openai' | 'anthropic' | 'google';
-export type AiModelKind = 'text' | 'image' | 'tts';
+export type AiModelKind = 'text' | 'image' | 'tts' | 'video' | 'avatar';
+export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type AiTier = 'flagship' | 'balanced' | 'economy';
 
 export interface ModelPricing {
@@ -19,6 +20,10 @@ export interface ModelPricing {
   usdPerImage?: number;
   /** USD per 1M characters (TTS) — estimate when the provider bills by audio tokens. */
   usdPerMChars?: number;
+  /** USD per generated second of video (video clips / talking avatars), without native audio. */
+  usdPerSecond?: number;
+  /** USD per second when native audio is generated (when the provider prices it differently). */
+  usdPerSecondWithAudio?: number;
   /** True when the number is an estimate rather than a published per-unit price. */
   estimated?: boolean;
 }
@@ -35,6 +40,19 @@ export interface ModelSpec {
     vision?: boolean;
     hebrew?: 'good' | 'ok';
     maxOutputTokens?: number;
+    /** Video / avatar models: allowed clip durations in seconds (provider snaps to these). */
+    durations?: number[];
+    /** Video / avatar models: supported aspect ratios. */
+    aspects?: VideoAspect[];
+    resolutions?: string[];
+    /** Accepts a start image (image-to-video). */
+    imageInput?: boolean;
+    /** Accepts reference images for subject consistency (count). */
+    referenceImages?: number;
+    /** Generates sound / dialogue natively. */
+    nativeAudio?: boolean;
+    /** Avatar: max seconds of driving audio. */
+    maxAudioSeconds?: number;
   };
   /** Routing hints: higher = preferred for quality-sensitive tasks. */
   qualityRank: number;
@@ -233,6 +251,13 @@ export const PROVIDER_LABELS: Record<AiProviderId, string> = {
   google: 'Google AI (Gemini)',
 };
 
+/** Snap a wanted duration to the model's allowed durations (smallest ≥ wanted, else the longest). */
+export function snapDuration(spec: Pick<ModelSpec, 'capabilities'>, wantedSec: number): number {
+  const allowed = [...(spec.capabilities.durations ?? [])].sort((a, b) => a - b);
+  if (allowed.length === 0) return Math.max(1, Math.ceil(wantedSec));
+  return allowed.find((d) => d >= wantedSec) ?? allowed[allowed.length - 1]!;
+}
+
 export function catalogFor(provider: AiProviderId, kind?: AiModelKind): ModelSpec[] {
   return MODEL_CATALOG.filter((m) => m.provider === provider && (!kind || m.kind === kind));
 }
@@ -244,7 +269,7 @@ export function findModel(provider: AiProviderId, modelId: string): ModelSpec | 
 /** Estimate the ILS cost of a run from token / unit counts using catalog prices. */
 export function estimateCostIls(
   spec: Pick<ModelSpec, 'pricing'>,
-  usage: { inputTokens?: number; outputTokens?: number; images?: number; characters?: number },
+  usage: { inputTokens?: number; outputTokens?: number; images?: number; characters?: number; seconds?: number; withAudio?: boolean },
   usdToIls = USD_TO_ILS_DEFAULT,
 ): number {
   const p = spec.pricing;
@@ -253,5 +278,9 @@ export function estimateCostIls(
   if (usage.outputTokens && p.outputUsdPerMTok) usd += (usage.outputTokens / 1_000_000) * p.outputUsdPerMTok;
   if (usage.images && p.usdPerImage && !(usage.outputTokens && p.outputUsdPerMTok)) usd += usage.images * p.usdPerImage;
   if (usage.characters && p.usdPerMChars) usd += (usage.characters / 1_000_000) * p.usdPerMChars;
+  if (usage.seconds) {
+    const perSecond = usage.withAudio && p.usdPerSecondWithAudio !== undefined ? p.usdPerSecondWithAudio : p.usdPerSecond;
+    if (perSecond) usd += usage.seconds * perSecond;
+  }
   return Math.round(usd * usdToIls * 10_000) / 10_000;
 }

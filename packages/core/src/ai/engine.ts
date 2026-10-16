@@ -12,13 +12,13 @@ import { getApproval, markApprovalExecuted, requestApproval } from '../services/
 import { notifyBrandAdmins } from '../services/notifications';
 import type { BrandContext } from '../tenancy/context';
 import { assertBrandRole } from '../tenancy/context';
-import { imageAdapter, textAdapter, ttsAdapter } from './adapters';
-import { estimateCostIls } from './catalog';
-import type { AiProviderId, AiTier, ModelSpec } from './catalog';
+import { avatarAdapter, imageAdapter, textAdapter, ttsAdapter, videoAdapter } from './adapters';
+import { estimateCostIls, snapDuration } from './catalog';
+import type { AiModelKind, AiProviderId, AiTier, ModelSpec } from './catalog';
 import { routeCandidates } from './router';
 import type { RouteCandidate } from './router';
 import { AiApprovalRequiredError, AiBudgetExceededError, AiOutputInvalidError, AiPausedError, AiProviderError } from './types';
-import type { InlineImage, TextResult, TokenUsage } from './types';
+import type { InlineImage, TalkingAvatarRequest, TextResult, TokenUsage, VideoClipRequest, VideoClipResult, VideoProgress } from './types';
 
 /** Hebrew-heavy prompts: ≈2 characters per token on current tokenizers. */
 const TOKENS_PER_CHAR = 0.5;
@@ -83,11 +83,28 @@ const APPROVAL_VOUCHER_HOURS = 24;
  * approved, repeating the request consumes that approval (explicit `approvalId` or an automatic
  * lookup) and the run marks it EXECUTED, so one approval pays for exactly one run.
  */
-async function gate(ctx: BrandContext, task: AiTaskType, label: string, estimateIls: number, approvalId: string | undefined, candidate: RouteCandidate, usage: AiUsage, requestHash: string): Promise<GateResult> {
+async function gate(
+  ctx: BrandContext,
+  task: AiTaskType,
+  label: string,
+  estimateIls: number,
+  approvalId: string | undefined,
+  candidate: RouteCandidate,
+  usage: AiUsage,
+  requestHash: string,
+  coveredByApprovalId?: string,
+): Promise<GateResult> {
   const cfg = getConfig();
   if (!cfg.AI_ENABLED) throw new AiPausedError();
   let approval: Approval | null = null;
-  if (!candidate.isMock && estimateIls > cfg.AI_SINGLE_RUN_MAX_ILS) {
+  let covered = false;
+  if (!candidate.isMock && estimateIls > cfg.AI_SINGLE_RUN_MAX_ILS && coveredByApprovalId) {
+    // A render-level approval (e.g. a whole video) covers the individual calls it pays for.
+    const cover = await getApproval(ctx, coveredByApprovalId);
+    if (cover.subjectType !== 'video_render' || cover.status !== 'APPROVED') throw new AiApprovalRequiredError(cover.id, estimateIls);
+    covered = true;
+  }
+  if (!covered && !candidate.isMock && estimateIls > cfg.AI_SINGLE_RUN_MAX_ILS) {
     const subjectId = `${task}:${requestHash}`;
     if (approvalId) {
       approval = await getApproval(ctx, approvalId);
@@ -465,6 +482,155 @@ export async function probeProvider(ctx: BrandContext, provider: AiProviderId): 
     preferProviders: [provider],
     maxOutputTokens: 20,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Motion clips and talking avatars (async provider jobs, billed per second)
+// ---------------------------------------------------------------------------
+
+interface ClipRunCommon {
+  label?: string;
+  tier?: AiTier;
+  preferProviders?: AiProviderId[];
+  approvalId?: string;
+  /** A render-level approval (subjectType "video_render") that covers this call. */
+  coveredByApprovalId?: string;
+  onProgress?: VideoProgress;
+  timeoutMs?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RunVideoOptions extends ClipRunCommon {
+  request: VideoClipRequest;
+}
+
+export interface RunAvatarOptions extends ClipRunCommon {
+  request: TalkingAvatarRequest;
+}
+
+export interface RunClipResult {
+  clip: VideoClipResult;
+  run: AiRun;
+  isMock: boolean;
+  modelId: string;
+  provider: AiProviderId;
+  spec: ModelSpec;
+}
+
+function clipSeconds(kind: 'video' | 'avatar', spec: ModelSpec, opts: RunVideoOptions | RunAvatarOptions): number {
+  if (kind === 'avatar') return Math.max(1, Math.round(((opts as RunAvatarOptions).request.audio.durationMs / 1000) * 10) / 10);
+  return snapDuration(spec, (opts as RunVideoOptions).request.seconds);
+}
+
+async function runClip(ctx: BrandContext, kind: 'video' | 'avatar', opts: RunVideoOptions | RunAvatarOptions): Promise<RunClipResult> {
+  assertBrandRole(ctx, 'EDITOR');
+  const cfg = getConfig();
+  const task: AiTaskType = kind === 'video' ? 'VIDEO_CLIP' : 'AVATAR_VIDEO';
+  const usage = await getAiUsage(ctx);
+  const all = await routeCandidates(ctx.orgId, ctx.brandId, task, { kind: kind as AiModelKind, tier: opts.tier, preferProviders: opts.preferProviders, softBudget: usage.softHit, allowMock: mockAllowed(ctx) });
+  const wantsImage = kind === 'video' && Boolean((opts as RunVideoOptions).request.image);
+  const candidates = all.filter((c) => c.isMock || !wantsImage || c.spec.capabilities.imageInput !== false);
+  if (candidates.length === 0) throw new AiProviderError(all[0]!.spec.provider, 'אף מודל וידאו מחובר אינו תומך בתמונת פתיחה');
+  const primary = candidates[0]!;
+  const withAudio = kind === 'video' ? Boolean((opts as RunVideoOptions).request.audio) : false;
+  const seconds = clipSeconds(kind, primary.spec, opts);
+  const estimateIls = primary.isMock ? 0 : estimateCostIls(primary.spec, { seconds, withAudio }, cfg.USD_ILS_RATE);
+  const req = opts.request;
+  const fingerprint =
+    kind === 'video'
+      ? hashOf('video', (req as VideoClipRequest).prompt, (req as VideoClipRequest).aspect, String(seconds), String(withAudio), (req as VideoClipRequest).image ? createHash('sha256').update((req as VideoClipRequest).image!.data).digest('hex') : '')
+      : hashOf('avatar', (req as TalkingAvatarRequest).aspect, createHash('sha256').update((req as TalkingAvatarRequest).image.data).digest('hex'), createHash('sha256').update((req as TalkingAvatarRequest).audio.data).digest('hex'));
+  const label = opts.label ?? (kind === 'video' ? 'קליפ וידאו' : 'דמות מדברת');
+  const { approval } = await gate(ctx, task, label, estimateIls, opts.approvalId, primary, usage, fingerprint, opts.coveredByApprovalId);
+
+  const run = await ctx.db.aiRun.create({
+    data: {
+      brandId: ctx.brandId,
+      task,
+      provider: primary.spec.provider,
+      modelId: primary.spec.modelId,
+      status: 'RUNNING',
+      videoSeconds: seconds,
+      costIls: estimateIls,
+      estimated: true,
+      promptHash: fingerprint,
+      requestedById: ctx.actor.userId || null,
+      approvalId: approval?.id ?? opts.coveredByApprovalId ?? null,
+      metadata: { ...(opts.metadata ?? {}), label, mock: primary.isMock, estimateIls, seconds, withAudio },
+    },
+  });
+
+  // Never fall back to a model that costs noticeably more than what was estimated / approved.
+  const primaryRate = primary.isMock ? 0 : estimateCostIls(primary.spec, { seconds: 1, withAudio }, cfg.USD_ILS_RATE);
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    if (candidate !== primary && !candidate.isMock && estimateCostIls(candidate.spec, { seconds: 1, withAudio }, cfg.USD_ILS_RATE) > primaryRate * 1.2) continue;
+    try {
+      const clip =
+        kind === 'video'
+          ? await videoAdapter(candidate.spec.provider, candidate.apiKey).generate(candidate.spec, (opts as RunVideoOptions).request, { onProgress: opts.onProgress, timeoutMs: opts.timeoutMs })
+          : await avatarAdapter(candidate.spec.provider, candidate.apiKey).generate(candidate.spec, (opts as RunAvatarOptions).request, { onProgress: opts.onProgress, timeoutMs: opts.timeoutMs });
+      const costIls = candidate.isMock ? 0 : estimateCostIls(candidate.spec, { seconds: clip.seconds, withAudio }, cfg.USD_ILS_RATE);
+      const updated = await ctx.db.aiRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'SUCCEEDED',
+          provider: candidate.spec.provider,
+          modelId: clip.modelId,
+          videoSeconds: clip.seconds,
+          costIls,
+          costUsd: costIls / cfg.USD_ILS_RATE,
+          estimated: Boolean(candidate.spec.pricing.estimated),
+          latencyMs: clip.latencyMs,
+          metadata: { ...(opts.metadata ?? {}), label, mock: candidate.isMock, estimateIls, seconds: clip.seconds, withAudio, jobId: clip.jobId },
+        },
+      });
+      if (approval) await markApprovalExecuted(ctx, approval.id).catch(() => undefined);
+      return { clip, run: updated, isMock: candidate.isMock, modelId: clip.modelId, provider: candidate.spec.provider, spec: candidate.spec };
+    } catch (err) {
+      lastError = err;
+      logger.warn({ err, provider: candidate.spec.provider, model: candidate.spec.modelId, kind }, 'ai clip candidate failed');
+      // Content-policy / validation failures are not retried on another model.
+      if (!(err instanceof AiProviderError) || !err.retryable) break;
+    }
+  }
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  await ctx.db.aiRun.update({ where: { id: run.id }, data: { status: 'FAILED', error: message.slice(0, 2000), costIls: 0 } }).catch(() => undefined);
+  throw lastError instanceof AppError ? lastError : new AiProviderError(primary.spec.provider, message);
+}
+
+/** Motion clip (text-to-video or image-to-video), recorded in the ledger at its per-second price. */
+export function runVideo(ctx: BrandContext, opts: RunVideoOptions): Promise<RunClipResult> {
+  return runClip(ctx, 'video', opts);
+}
+
+/** Talking character lip-synced to the given narration audio. */
+export function runAvatar(ctx: BrandContext, opts: RunAvatarOptions): Promise<RunClipResult> {
+  return runClip(ctx, 'avatar', opts);
+}
+
+/** The model the router would use first for a clip kind (null when no provider and mocks are not allowed). */
+export async function resolveClipModel(ctx: BrandContext, kind: 'video' | 'avatar', tier?: AiTier): Promise<{ spec: ModelSpec; isMock: boolean } | null> {
+  try {
+    const candidates = await routeCandidates(ctx.orgId, ctx.brandId, kind === 'video' ? 'VIDEO_CLIP' : 'AVATAR_VIDEO', { kind, tier, allowMock: mockAllowed(ctx) });
+    const first = candidates[0];
+    return first ? { spec: first.spec, isMock: first.isMock } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Price of `seconds` of video on the model the router would pick first (0 for mocks / no provider). */
+export async function estimateClipCost(ctx: BrandContext, kind: 'video' | 'avatar', seconds: number, opts: { tier?: AiTier; withAudio?: boolean } = {}): Promise<{ ils: number; modelId: string | null; provider: AiProviderId | null; isMock: boolean }> {
+  const cfg = getConfig();
+  try {
+    const candidates = await routeCandidates(ctx.orgId, ctx.brandId, kind === 'video' ? 'VIDEO_CLIP' : 'AVATAR_VIDEO', { kind, tier: opts.tier, allowMock: mockAllowed(ctx) });
+    const first = candidates[0]!;
+    const secs = kind === 'video' ? snapDuration(first.spec, seconds) : seconds;
+    return { ils: first.isMock ? 0 : estimateCostIls(first.spec, { seconds: secs, withAudio: opts.withAudio }, cfg.USD_ILS_RATE), modelId: first.spec.modelId, provider: first.spec.provider, isMock: first.isMock };
+  } catch {
+    return { ils: 0, modelId: null, provider: null, isMock: false };
+  }
 }
 
 export interface AiRunRow extends AiRun {

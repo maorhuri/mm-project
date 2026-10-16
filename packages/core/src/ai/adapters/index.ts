@@ -1,14 +1,18 @@
 import type { AiProviderId } from '../catalog';
-import type { ImageAdapter, TextAdapter, TtsAdapter } from '../types';
+import type { AvatarAdapter, ImageAdapter, TextAdapter, TtsAdapter, VideoAdapter } from '../types';
 import { AnthropicTextAdapter } from './anthropic';
 import { GoogleImageAdapter, GoogleTextAdapter } from './google';
 import { MockImageAdapter, MockTextAdapter, MockTtsAdapter } from './mock';
+import { MockAvatarAdapter, MockVideoAdapter } from './mock-video';
+import { realAvatarAdapter, realVideoAdapter } from './video-providers';
 import { OpenAiImageAdapter, OpenAiTextAdapter, OpenAiTtsAdapter } from './openai';
 
 interface AdapterOverrides {
   text?: TextAdapter;
   image?: ImageAdapter;
   tts?: TtsAdapter;
+  video?: VideoAdapter;
+  avatar?: AvatarAdapter;
 }
 let overrides: AdapterOverrides = {};
 
@@ -43,4 +47,17 @@ export function ttsAdapter(provider: AiProviderId, apiKey: string | null): TtsAd
   return new OpenAiTtsAdapter(apiKey);
 }
 
+export function videoAdapter(provider: AiProviderId, apiKey: string | null): VideoAdapter {
+  if (overrides.video) return overrides.video;
+  if (!apiKey) return new MockVideoAdapter();
+  return realVideoAdapter(provider, apiKey);
+}
+
+export function avatarAdapter(provider: AiProviderId, apiKey: string | null): AvatarAdapter {
+  if (overrides.avatar) return overrides.avatar;
+  if (!apiKey) return new MockAvatarAdapter();
+  return realAvatarAdapter(provider, apiKey);
+}
+
+export { MockAvatarAdapter, MockVideoAdapter };
 export { AnthropicTextAdapter, GoogleImageAdapter, GoogleTextAdapter, MockImageAdapter, MockTextAdapter, MockTtsAdapter, OpenAiImageAdapter, OpenAiTextAdapter, OpenAiTtsAdapter };

@@ -24,6 +24,9 @@ const TASK_LABELS: Record<string, string> = {
   VIDEO_SCRIPT: 'תסריט וידאו',
   TTS: 'קריינות',
   OTHER: 'אחר',
+  VIDEO_CLIP: 'קליפי וידאו AI',
+  AVATAR_VIDEO: 'דמויות מדברות',
+  CHARACTER_IMAGE: 'ציור דמויות',
 };
 
 const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'destructive' | 'muted' }> = {
@@ -165,6 +168,7 @@ export default async function AiPage() {
                       {r.inputTokens ?? '—'} / {r.outputTokens ?? '—'}
                       {r.images ? ` · ${r.images} img` : ''}
                       {r.characters ? ` · ${r.characters} chars` : ''}
+                      {r.videoSeconds ? ` · ${r.videoSeconds}s video` : ''}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {ils(r.costIlsNumber)}

@@ -30,6 +30,8 @@ export * from './creative';
 export * from './services/creative';
 export * from './services/strategy';
 export * from './services/video';
+export * from './services/characters';
+export * from './media/ffmpeg';
 export * from './services/meta';
 export * from './meta/graph';
 export * from './services/dashboard';
