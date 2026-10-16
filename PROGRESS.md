@@ -5,7 +5,7 @@ verified**, and what is **pending**. Nothing is marked verified unless it was
 exercised on the real server (https://mm-marketing.mymvn.app) or by automated
 tests run there.
 
-_Last updated: 2026-10-15 23:25 — Phase 1 live (commit `a743f3c`)._
+_Last updated: 2026-10-16 09:05 — Phase 1 live + hardening (commit `310df24`); owner has enabled 2FA._
 
 ## Phase 1 — Foundation: LIVE
 
@@ -68,8 +68,8 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 ### Owner requests (2026-10-16)
 | Item | Status |
 | --- | --- |
-| Delete brands (org admins, slug confirmation, cascade + storage cleanup, audited; UI + `DELETE /api/v1/brands/:id`) | 🟡 built — tests green on dev; live after next deploy |
-| AI provider API keys in the Integrations page (encrypted, org-wide, brand override, real connection test) + verified model catalog | 🟡 built — live after next deploy |
+| Delete brands (org admins, slug confirmation, cascade + storage cleanup, audited; UI + `DELETE /api/v1/brands/:id`) | ✅ live in `310df24` (2026-10-16 09:02); isolation test covers cascade + storage |
+| AI provider API keys in the Integrations page (encrypted, org-wide, brand override, real connection test) + verified model catalog | ✅ live in `310df24`; waiting for the owner's OpenAI key to verify a real connection |
 
 ## Known gaps / next steps
 - Manual UI click-through of every screen (owner + Claude); fix anything found.
