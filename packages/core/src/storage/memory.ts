@@ -20,6 +20,17 @@ export class MemoryStorage implements ObjectStorage {
     this.objects.delete(key);
   }
 
+  async deletePrefix(prefix: string): Promise<number> {
+    let n = 0;
+    for (const key of [...this.objects.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.objects.delete(key);
+        n += 1;
+      }
+    }
+    return n;
+  }
+
   async exists(key: string): Promise<boolean> {
     return this.objects.has(key);
   }

@@ -31,7 +31,13 @@ export interface IntegrationStatus extends IntegrationCatalogEntry {
   externalAccountId: string | null;
   lastSyncAt: Date | null;
   lastError: string | null;
+  /** Masked hint of the stored key (e.g. "…ab12"), never the key itself. */
+  keyHint: string | null;
+  /** True when an API key can be entered for this provider in the UI. */
+  acceptsApiKey: boolean;
 }
+
+const API_KEY_PROVIDERS = new Set(['openai', 'anthropic', 'google']);
 
 /**
  * Catalog merged with real connection rows. Org-wide rows (brandId null) and
@@ -44,6 +50,7 @@ export async function listIntegrationStatus(ctx: BrandContext): Promise<Integrat
   });
   return INTEGRATION_CATALOG.map((entry) => {
     const row = rows.find((r) => r.provider === entry.provider);
+    const meta = (row?.metadata as { keyHint?: string } | null) ?? null;
     return {
       ...entry,
       status: row?.status ?? 'DISCONNECTED',
@@ -51,6 +58,8 @@ export async function listIntegrationStatus(ctx: BrandContext): Promise<Integrat
       externalAccountId: row?.externalAccountId ?? null,
       lastSyncAt: row?.lastSyncAt ?? null,
       lastError: row?.lastError ?? null,
+      keyHint: row?.status !== 'DISCONNECTED' ? (meta?.keyHint ?? null) : null,
+      acceptsApiKey: API_KEY_PROVIDERS.has(entry.provider),
     };
   });
 }

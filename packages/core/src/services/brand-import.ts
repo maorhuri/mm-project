@@ -7,7 +7,7 @@
 import path from 'node:path';
 import * as cheerio from 'cheerio';
 import sharp from 'sharp';
-import type { BrandAssetType } from '@mm/db';
+import type { BrandAssetType, MediaAsset } from '@mm/db';
 import { auditFromContext } from '../audit';
 import { getConfig } from '../config';
 import { ValidationError } from '../errors';
@@ -44,6 +44,8 @@ export interface FontCandidate {
   family: string;
   score: number;
   sources: FontSource[];
+  /** How often the family is used in heading (h1–h6/title) vs body (body/html/p) rules. */
+  roles: { heading: number; body: number };
 }
 
 export interface LogoCandidate {
@@ -85,6 +87,14 @@ const HTML_MAX = 2 * 1024 * 1024;
 const CSS_MAX = 1.5 * 1024 * 1024;
 const LOGO_MAX = 3 * 1024 * 1024;
 const MAX_STYLESHEETS = 8;
+const LOGO_MAX_PIXELS = 25_000_000;
+
+// Budgets for custom-property resolution: bounded work regardless of input.
+const VAR_MAX_INPUT = 4 * 1024;
+const VAR_MAX_OUTPUT = 2 * 1024;
+const VAR_MAX_REFS = 32;
+const MAX_COLOR_TOKENS_PER_VALUE = 64;
+
 const GENERIC_FONTS = new Set([
   'sans-serif',
   'serif',
@@ -135,21 +145,24 @@ const ICON_FONT_RE =
 // CSS extraction (pure)
 // ---------------------------------------------------------------------------
 
-const COLOR_TOKEN_RE = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|(?:rgb|hsl)a?\([^)]*\)/gi;
+const COLOR_TOKEN_RE =
+  /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\b(?:rgb|hsl)a?\([^)]*\)|\b(?:oklch|oklab|lch|lab|hwb)\([^)]*\)|\bcolor\((?:srgb|srgb-linear|display-p3|rec2020|a98-rgb|prophoto-rgb)[^)]*\)/gi;
 const COLOR_DECL_RE =
   /(?:^|[;{\s])(background(?:-color)?|color|border(?:-[a-z]+)?-color|border|fill|stroke|outline-color|box-shadow|text-decoration-color)\s*:\s*([^;}]+)/gi;
 const VAR_DECL_RE = /(--[\w-]+)\s*:\s*([^;}]+)/g;
-const VAR_REF_RE = /var\(\s*(--[\w-]+)\s*(?:,\s*([^)]+))?\)/g;
+const VAR_REF_RE = /var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*(?:\([^()]*\)[^()]*)*))?\)/g;
 const FONT_FAMILY_RE = /font-family\s*:\s*([^;}]+)/gi;
 const FONT_FACE_RE = /@font-face\s*{([^}]*)}/gi;
 const FONT_SHORTHAND_RE = /(?:^|[;{\s])font\s*:\s*([^;}]+)/gi;
+const IMPORTANT_RE = /\s*!\s*important\s*$/i;
 const BRAND_VAR_HINT = /(primary|brand|accent|main|theme|secondary|highlight|cta)/i;
+const FONT_SIZE_RE = /^(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:px|em|rem|%|pt|vw|vh|ch|ex|cm|mm|in|pc|vmin|vmax)|xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)(?:\/.*)?$/i;
 
 function cleanFamily(raw: string): string | null {
-  const f = raw.trim().replace(/^["']|["']$/g, '').trim();
+  const f = raw.replace(IMPORTANT_RE, '').trim().replace(/^["']|["']$/g, '').trim();
   // Real families have ≥3 characters and letters; 1–2 letter tokens are minifier noise.
   if (!f || f.length < 3 || f.length > 60 || !/[a-z֐-׿]{2}/i.test(f)) return null;
-  if (f.startsWith('var(') || f.includes('{') || f.includes('}')) return null;
+  if (f.startsWith('var(') || f.includes('{') || f.includes('}') || f.includes('"') || f.includes("'")) return null;
   if (GENERIC_FONTS.has(f.toLowerCase())) return null;
   if (ICON_FONT_RE.test(f)) return null;
   return f;
@@ -159,19 +172,56 @@ export function extractCssVariables(css: string): Map<string, string> {
   const vars = new Map<string, string>();
   for (const m of css.matchAll(VAR_DECL_RE)) {
     const name = m[1]!;
-    const value = m[2]!.trim();
+    const value = m[2]!.replace(IMPORTANT_RE, '').trim();
     if (!vars.has(name)) vars.set(name, value);
   }
   return vars;
 }
 
-function resolveVars(value: string, vars: Map<string, string>, depth = 0): string {
-  if (depth > 4 || !value.includes('var(')) return value;
-  return value.replace(VAR_REF_RE, (_m, name: string, fallback?: string) => {
-    const v = vars.get(name);
-    if (v !== undefined) return resolveVars(v, vars, depth + 1);
-    return fallback ? resolveVars(fallback, vars, depth + 1) : '';
-  });
+/**
+ * Bounded `var()` resolver. Each custom property is resolved once (memoised)
+ * with a cycle guard; inputs over VAR_MAX_INPUT are ignored, at most
+ * VAR_MAX_REFS references are substituted per value and every result is cut at
+ * VAR_MAX_OUTPUT — so hostile stylesheets cannot blow up time or memory.
+ */
+class VarResolver {
+  private readonly resolved = new Map<string, string>();
+  private readonly inProgress = new Set<string>();
+  constructor(private readonly vars: Map<string, string>) {}
+
+  value(name: string): string {
+    const cached = this.resolved.get(name);
+    if (cached !== undefined) return cached;
+    if (this.inProgress.has(name)) return '';
+    const raw = this.vars.get(name);
+    if (raw === undefined) return '';
+    this.inProgress.add(name);
+    const out = this.expand(raw);
+    this.inProgress.delete(name);
+    this.resolved.set(name, out);
+    return out;
+  }
+
+  expand(value: string): string {
+    if (value.length > VAR_MAX_INPUT) return '';
+    if (!value.includes('var(')) return value;
+    let out = '';
+    let last = 0;
+    let refs = 0;
+    VAR_REF_RE.lastIndex = 0;
+    for (const m of value.matchAll(VAR_REF_RE)) {
+      out += value.slice(last, m.index);
+      last = m.index! + m[0].length;
+      refs += 1;
+      if (refs > VAR_MAX_REFS) break;
+      let sub = this.value(m[1]!);
+      if (!sub && m[2]) sub = this.expand(m[2]);
+      out += sub;
+      if (out.length > VAR_MAX_OUTPUT) return out.slice(0, VAR_MAX_OUTPUT);
+    }
+    out += value.slice(last);
+    return out.length > VAR_MAX_OUTPUT ? out.slice(0, VAR_MAX_OUTPUT) : out;
+  }
 }
 
 interface ColorAcc {
@@ -179,6 +229,18 @@ interface ColorAcc {
   sources: Set<ColorSource>;
   variables: Set<string>;
 }
+
+export interface FontAcc {
+  family: string;
+  score: number;
+  sources: Set<FontSource>;
+  heading: number;
+  body: number;
+}
+
+const RULE_RE = /([^{}]+)\{([^{}]*)\}/g;
+const HEADING_SELECTOR_RE = /(^|[\s,>+~])h[1-6]\b|title|heading|headline|\.hero/i;
+const BODY_SELECTOR_RE = /(^|[\s,>+~])(body|html|p)\b|\.content|\.text/i;
 
 function addColor(acc: Map<string, ColorAcc>, hex: string, weight: number, source: ColorSource, variable?: string) {
   const entry = acc.get(hex) ?? { score: 0, sources: new Set<ColorSource>(), variables: new Set<string>() };
@@ -188,9 +250,19 @@ function addColor(acc: Map<string, ColorAcc>, hex: string, weight: number, sourc
   acc.set(hex, entry);
 }
 
+function addFont(acc: Map<string, FontAcc>, family: string, weight: number, source: FontSource, role?: 'heading' | 'body') {
+  const key = family.toLowerCase();
+  const entry = acc.get(key) ?? { family, score: 0, sources: new Set<FontSource>(), heading: 0, body: 0 };
+  entry.score += weight;
+  entry.sources.add(source);
+  if (role) entry[role] += 1;
+  acc.set(key, entry);
+}
+
 function colorsFromValue(value: string): string[] {
   const out: string[] = [];
-  for (const token of value.match(COLOR_TOKEN_RE) ?? []) {
+  const tokens = value.match(COLOR_TOKEN_RE) ?? [];
+  for (const token of tokens.slice(0, MAX_COLOR_TOKENS_PER_VALUE)) {
     const parsed = parseCssColor(token);
     if (parsed && parsed.alpha >= 0.3) out.push(parsed.hex);
   }
@@ -204,51 +276,64 @@ function colorsFromValue(value: string): string[] {
 /** Count colours in CSS text, resolving custom properties. Mutates `acc`. */
 export function extractColors(css: string, acc: Map<string, ColorAcc>, source: ColorSource): void {
   const vars = extractCssVariables(css);
-  for (const [name, raw] of vars) {
-    const resolved = resolveVars(raw, vars);
-    for (const hex of colorsFromValue(resolved)) {
+  const resolver = new VarResolver(vars);
+  for (const name of vars.keys()) {
+    for (const hex of colorsFromValue(resolver.value(name))) {
       addColor(acc, hex, BRAND_VAR_HINT.test(name) ? 6 : 2, 'css-variable', name);
     }
   }
   for (const m of css.matchAll(COLOR_DECL_RE)) {
     const prop = m[1]!.toLowerCase();
-    const value = resolveVars(m[2]!, vars);
+    const value = resolver.expand(m[2]!.replace(IMPORTANT_RE, ''));
     const weight = prop === 'background' || prop === 'background-color' || prop === 'color' ? 1 : 0.5;
     for (const hex of colorsFromValue(value)) addColor(acc, hex, weight, source);
   }
 }
 
+/** Family list from a `font:` shorthand: everything after the size (or size/line-height) token. */
+function familiesFromShorthand(value: string): string[] {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const sizeIdx = tokens.findIndex((t) => FONT_SIZE_RE.test(t));
+  if (sizeIdx === -1) return [];
+  let rest = tokens.slice(sizeIdx + 1);
+  if (rest[0] === '/') rest = rest.slice(2); // "16px / 1.5 Heebo"
+  else if (rest[0]?.startsWith('/')) rest = rest.slice(1); // "16px /1.5 Heebo"
+  return rest.join(' ').split(',');
+}
+
 /** Count font families in CSS text. Mutates `acc`. */
-export function extractFonts(css: string, acc: Map<string, { score: number; sources: Set<FontSource> }>): void {
-  const add = (family: string, weight: number, source: FontSource) => {
-    const key = family.toLowerCase();
-    const e = acc.get(key) ?? { score: 0, sources: new Set<FontSource>() };
-    e.score += weight;
-    e.sources.add(source);
-    acc.set(key, e);
-    familyNames.set(key, familyNames.get(key) ?? family);
-  };
+export function extractFonts(css: string, acc: Map<string, FontAcc>): void {
   for (const m of css.matchAll(FONT_FACE_RE)) {
     const fam = /font-family\s*:\s*([^;]+)/i.exec(m[1]!);
     const f = fam ? cleanFamily(fam[1]!) : null;
-    if (f) add(f, 5, 'font-face');
+    if (f) addFont(acc, f, 5, 'font-face');
   }
-  const vars = extractCssVariables(css);
+  const resolver = new VarResolver(extractCssVariables(css));
   for (const m of css.matchAll(FONT_FAMILY_RE)) {
-    const list = resolveVars(m[1]!, vars).split(',');
+    const list = resolver.expand(m[1]!.replace(IMPORTANT_RE, '')).split(',');
     const first = list.map(cleanFamily).find(Boolean);
-    if (first) add(first, 1, 'css');
+    if (first) addFont(acc, first, 1, 'css');
   }
   for (const m of css.matchAll(FONT_SHORTHAND_RE)) {
-    const value = resolveVars(m[1]!, vars);
-    // shorthand: the family list is everything after the size/line-height token
-    const after = value.split(/\s+(?=[^\d])/).slice(-1)[0] ?? '';
-    const first = after.split(',').map(cleanFamily).find(Boolean);
-    if (first && /\d/.test(value)) add(first, 0.5, 'css');
+    const value = resolver.expand(m[1]!.replace(IMPORTANT_RE, ''));
+    const first = familiesFromShorthand(value).map(cleanFamily).find(Boolean);
+    if (first) addFont(acc, first, 0.5, 'css');
+  }
+  // Role hints: which families are used for headings vs body text.
+  for (const rule of css.matchAll(RULE_RE)) {
+    const selector = rule[1]!.trim();
+    if (selector.startsWith('@') || selector.length > 400) continue;
+    const isHeading = HEADING_SELECTOR_RE.test(selector);
+    const isBody = BODY_SELECTOR_RE.test(selector);
+    if (!isHeading && !isBody) continue;
+    const decl = /font(?:-family)?\s*:\s*([^;}]+)/i.exec(rule[2]!);
+    if (!decl) continue;
+    const value = resolver.expand(decl[1]!.replace(IMPORTANT_RE, ''));
+    const list = /font-family/i.test(decl[0]) ? value.split(',') : familiesFromShorthand(value);
+    const first = list.map(cleanFamily).find(Boolean);
+    if (first) addFont(acc, first, 0, 'css', isHeading ? 'heading' : 'body');
   }
 }
-
-const familyNames = new Map<string, string>();
 
 export function fontsFromGoogleFontsUrl(href: string): string[] {
   const families: string[] = [];
@@ -270,6 +355,26 @@ export function fontsFromGoogleFontsUrl(href: string): string[] {
 // ---------------------------------------------------------------------------
 // Analysis
 // ---------------------------------------------------------------------------
+
+/** WHATWG-style charset resolution: transport header, BOM, then a prescan of the first 2 KB for <meta charset>. */
+export function decodeHtml(buffer: Buffer, contentType: string): string {
+  let label: string | undefined = /charset=["']?([\w.:-]+)/i.exec(contentType)?.[1];
+  if (!label) {
+    if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) label = 'utf-8';
+    else if (buffer[0] === 0xff && buffer[1] === 0xfe) label = 'utf-16le';
+    else if (buffer[0] === 0xfe && buffer[1] === 0xff) label = 'utf-16be';
+  }
+  if (!label) {
+    const head = buffer.subarray(0, 2048).toString('latin1');
+    label = /<meta[^>]+charset=["']?\s*([\w.:-]+)/i.exec(head)?.[1] ?? /content=["'][^"']*charset=([\w.:-]+)/i.exec(head)?.[1];
+  }
+  const encoding = (label ?? 'utf-8').toLowerCase();
+  try {
+    return new TextDecoder(encoding === 'utf8' ? 'utf-8' : encoding).decode(buffer);
+  } catch {
+    return buffer.toString('utf8');
+  }
+}
 
 function abs(base: string, href: string | undefined): string | null {
   if (!href) return null;
@@ -300,27 +405,41 @@ function suggestColors(colors: ColorCandidate[]): BrandSiteAnalysis['suggestions
   return out;
 }
 
-/** Prefer fonts the site deliberately loads (Google Fonts / @font-face) over stack fallbacks. */
+/**
+ * Heading = the font used most in h1–h6 rules; body = the font used most in body/p rules;
+ * otherwise fall back to the fonts the site deliberately loads (Google Fonts / @font-face).
+ */
 function suggestFonts(fonts: FontCandidate[]): BrandSiteAnalysis['suggestions']['fonts'] {
   const deliberate = fonts.filter((f) => f.sources.includes('google-fonts') || f.sources.includes('font-face') || f.score >= 3);
   const pool = deliberate.length > 0 ? deliberate : fonts;
-  const heading = pool[0]?.family;
-  const body = pool[1]?.family ?? heading;
+  const byHeading = [...fonts].filter((f) => f.roles.heading > 0).sort((a, b) => b.roles.heading - a.roles.heading);
+  const byBody = [...fonts].filter((f) => f.roles.body > 0).sort((a, b) => b.roles.body - a.roles.body);
+  const heading = byHeading[0]?.family ?? pool[0]?.family;
+  const body = byBody[0]?.family ?? pool.find((f) => f.family !== heading)?.family ?? heading;
   return { heading, body };
+}
+
+/** First URL out of a lazy-loading <img>: data-* attributes before src, srcset last. */
+function imgSource($el: { attr(name: string): string | undefined }): string | undefined {
+  for (const attr of ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'src']) {
+    const v = $el.attr(attr)?.trim();
+    if (v && !v.startsWith('data:')) return v;
+  }
+  const srcset = $el.attr('data-srcset') ?? $el.attr('srcset');
+  return srcset?.split(',')[0]?.trim().split(/\s+/)[0];
 }
 
 export async function analyzeBrandWebsite(requestedUrl: string, options: AnalyzeOptions = {}): Promise<BrandSiteAnalysis> {
   const fetcher = options.fetcher ?? safeFetch;
   const warnings: string[] = [];
-  familyNames.clear();
 
   const page = await fetcher(requestedUrl, { maxBytes: HTML_MAX, timeoutMs: 12_000, accept: 'text/html,application/xhtml+xml' });
   if (page.status >= 400) throw new ValidationError(`The website answered with HTTP ${page.status}`);
-  if (!page.contentType.includes('html') && !page.body.subarray(0, 512).toString('utf8').toLowerCase().includes('<html')) {
+  if (!page.contentType.includes('html') && !page.body.subarray(0, 512).toString('latin1').toLowerCase().includes('<html')) {
     throw new ValidationError('The URL does not return an HTML page');
   }
-  const html = page.body.toString('utf8');
-  const $ = cheerio.load(html);
+  // Decode with the declared charset (transport header → BOM → <meta charset>) — older Hebrew sites use windows-1255.
+  const $ = cheerio.load(decodeHtml(page.body, page.contentType));
   const base = abs(page.url, $('base[href]').attr('href')) ?? page.url;
 
   const title = $('title').first().text().trim() || $('meta[property="og:title"]').attr('content')?.trim() || null;
@@ -332,15 +451,14 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
 
   // --- stylesheets ---------------------------------------------------------
   const sheetUrls: string[] = [];
-  const googleFamilies: string[] = [];
+  const googleFamilies = new Set<string>();
   $('link[rel~="stylesheet"][href], link[rel="preload"][as="style"][href]').each((_i, el) => {
     const href = abs(base, $(el).attr('href'));
-    if (!href) return;
-    if (href.includes('fonts.googleapis.com')) googleFamilies.push(...fontsFromGoogleFontsUrl(href));
-    else if (!sheetUrls.includes(href)) sheetUrls.push(href);
+    if (!href || href.includes('fonts.googleapis.com')) return;
+    if (!sheetUrls.includes(href)) sheetUrls.push(href);
   });
   $('link[href*="fonts.googleapis.com"]').each((_i, el) => {
-    googleFamilies.push(...fontsFromGoogleFontsUrl($(el).attr('href') ?? ''));
+    for (const f of fontsFromGoogleFontsUrl($(el).attr('href') ?? '')) googleFamilies.add(f);
   });
   if (sheetUrls.length > MAX_STYLESHEETS) {
     warnings.push(`Only the first ${MAX_STYLESHEETS} of ${sheetUrls.length} stylesheets were analysed`);
@@ -380,18 +498,11 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
   if (themeColor) addColor(colorAcc, themeColor, 8, 'theme-color');
 
   // --- fonts ---------------------------------------------------------------
-  const fontAcc = new Map<string, { score: number; sources: Set<FontSource> }>();
+  const fontAcc = new Map<string, FontAcc>();
   extractFonts(externalCss, fontAcc);
   extractFonts(inlineStyles, fontAcc);
   extractFonts(styleAttrs, fontAcc);
-  for (const fam of googleFamilies) {
-    const key = fam.toLowerCase();
-    const e = fontAcc.get(key) ?? { score: 0, sources: new Set<FontSource>() };
-    e.score += 4;
-    e.sources.add('google-fonts');
-    fontAcc.set(key, e);
-    familyNames.set(key, familyNames.get(key) ?? fam);
-  }
+  for (const fam of googleFamilies) addFont(fontAcc, fam, 4, 'google-fonts');
 
   // --- logo candidates -----------------------------------------------------
   const logos: LogoCandidate[] = [];
@@ -413,9 +524,10 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
   const imgCandidates: { candidate: LogoCandidate; score: number }[] = [];
   $('img').each((_i, el) => {
     const $el = $(el);
-    const hint = `${$el.attr('src') ?? ''} ${$el.attr('alt') ?? ''} ${$el.attr('class') ?? ''} ${$el.attr('id') ?? ''}`.toLowerCase();
+    const src = imgSource($el);
+    const hint = `${src ?? ''} ${$el.attr('alt') ?? ''} ${$el.attr('class') ?? ''} ${$el.attr('id') ?? ''}`.toLowerCase();
     if (!hint.includes('logo')) return;
-    const candidate = makeCandidate($el.attr('src') ?? $el.attr('data-src'), 'img-logo');
+    const candidate = makeCandidate(src, 'img-logo');
     if (!candidate) return;
     let score = 0;
     if (hostLabel.length >= 2 && hint.includes(hostLabel)) score += 4;
@@ -426,7 +538,6 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
     imgCandidates.push({ candidate, score });
     logos.push(candidate); // reserve the URL for de-duplication; replaced by the ranked list below
   });
-  // Replace the DOM-ordered img entries with the ranked top 4.
   for (const { candidate } of imgCandidates) logos.splice(logos.indexOf(candidate), 1);
   imgCandidates.sort((a, b) => b.score - a.score);
   for (const { candidate } of imgCandidates.slice(0, 4)) logos.push(candidate);
@@ -436,18 +547,22 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
   const logoList = logos.slice(0, 8);
 
   if (options.inspectLogo !== false) {
-    const best = logoList.find((l) => l.importable);
+    const best = logoList.find((l) => l.importable && l.mimeType !== 'image/svg+xml');
     if (best) {
       try {
         const res = await fetcher(best.url, { maxBytes: LOGO_MAX, timeoutMs: 10_000, accept: 'image/*' });
-        if (res.status < 400 && !res.contentType.includes('svg')) {
-          const img = sharp(res.body, { failOn: 'none' });
-          const [meta, stats] = await Promise.all([img.metadata(), img.stats()]);
-          best.width = meta.width ?? null;
-          best.height = meta.height ?? null;
-          const dom = stats.dominant;
-          const hex = `#${[dom.r, dom.g, dom.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-          if (!isNeutral(hex)) addColor(colorAcc, hex, 4, 'logo');
+        if (res.status < 400) {
+          const img = sharp(res.body, { failOn: 'error', limitInputPixels: LOGO_MAX_PIXELS });
+          const meta = await img.metadata();
+          if (meta.format && ['png', 'jpeg', 'webp', 'gif'].includes(meta.format) && meta.width && meta.height) {
+            best.width = meta.width;
+            best.height = meta.height;
+            const { dominant } = await img.stats();
+            const hex = `#${[dominant.r, dominant.g, dominant.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+            if (!isNeutral(hex)) addColor(colorAcc, hex, 4, 'logo');
+          } else {
+            warnings.push(`Logo ${best.url} is not a supported raster image`);
+          }
         }
       } catch (err) {
         warnings.push(`Logo ${best.url} could not be inspected (${err instanceof Error ? err.message : 'error'})`);
@@ -463,8 +578,8 @@ export async function analyzeBrandWebsite(requestedUrl: string, options: Analyze
   const neutralColors = colors.filter((c) => c.neutral).slice(0, 4);
   const rankedColors = [...brandColors, ...neutralColors];
 
-  const fonts: FontCandidate[] = [...fontAcc.entries()]
-    .map(([key, e]) => ({ family: familyNames.get(key) ?? key, score: Math.round(e.score * 10) / 10, sources: [...e.sources] }))
+  const fonts: FontCandidate[] = [...fontAcc.values()]
+    .map((e) => ({ family: e.family, score: Math.round(e.score * 10) / 10, sources: [...e.sources], roles: { heading: e.heading, body: e.body } }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
 
@@ -510,6 +625,25 @@ export async function analyzeBrandSite(ctx: BrandContext, url?: string | null, o
 // Apply
 // ---------------------------------------------------------------------------
 
+interface FetchedLogo {
+  data: Buffer;
+  mimeType: string | undefined;
+  originalName: string;
+}
+
+/** Download and validate a logo (network + type checks only; nothing persisted). */
+async function fetchLogo(url: string, fetcher: Fetcher): Promise<FetchedLogo> {
+  const maxBytes = Math.min(getConfig().MEDIA_MAX_UPLOAD_MB * 1024 * 1024, LOGO_MAX * 4);
+  const res = await fetcher(url, { maxBytes, timeoutMs: 15_000, accept: 'image/*' });
+  if (res.status >= 400) throw new ValidationError(`Logo URL answered HTTP ${res.status}`);
+  const pathname = new URL(res.url).pathname;
+  const originalName = path.basename(pathname) || 'logo';
+  const mime = res.contentType.split(';')[0]?.trim() || undefined;
+  const type = resolveMediaType(mime && mime !== 'application/octet-stream' ? mime : undefined, pathname);
+  if (!type || type.kind !== 'IMAGE') throw new ValidationError('The logo URL is not an image (PNG, JPG, WebP, GIF or SVG)');
+  return { data: res.body, mimeType: type.mime, originalName };
+}
+
 export async function importLogoFromUrl(
   ctx: BrandContext,
   url: string,
@@ -517,58 +651,65 @@ export async function importLogoFromUrl(
   options: { fetcher?: Fetcher } = {},
 ): Promise<string> {
   assertBrandRole(ctx, 'BRAND_ADMIN');
-  const fetcher = options.fetcher ?? safeFetch;
-  const maxBytes = getConfig().MEDIA_MAX_UPLOAD_MB * 1024 * 1024;
-  const res = await fetcher(url, { maxBytes: Math.min(maxBytes, LOGO_MAX * 4), timeoutMs: 15_000, accept: 'image/*' });
-  if (res.status >= 400) throw new ValidationError(`Logo URL answered HTTP ${res.status}`);
-  const pathname = new URL(res.url).pathname;
-  const originalName = path.basename(pathname) || 'logo';
+  const logo = await fetchLogo(url, options.fetcher ?? safeFetch);
+  const asset = await storeLogo(ctx, logo, type);
+  return asset.id;
+}
+
+async function storeLogo(ctx: BrandContext, logo: FetchedLogo, type: BrandAssetType): Promise<MediaAsset> {
   const asset = await uploadMedia(ctx, {
-    data: res.body,
-    originalName,
-    mimeType: res.contentType.split(';')[0]?.trim() || undefined,
+    data: logo.data,
+    originalName: logo.originalName,
+    mimeType: logo.mimeType,
     source: 'IMPORTED',
     title: `לוגו מיובא מהאתר (${type.toLowerCase().replace('logo_', '')})`,
     tags: ['logo', 'imported'],
   });
   await setBrandAsset(ctx, { type, mediaAssetId: asset.id, label: 'ייבוא מהאתר' });
-  return asset.id;
+  return asset;
 }
 
-/** Persist the user's selection from an analysis. Only the provided parts change. */
-export async function applyBrandImport(ctx: BrandContext, input: BrandImportApplyInput): Promise<BrandKit> {
+/**
+ * Persist the user's selection from an analysis. The logo (the only step with
+ * a remote dependency) is fetched and validated BEFORE anything is written, so
+ * a bad logo URL leaves the Brand Kit untouched.
+ */
+export async function applyBrandImport(ctx: BrandContext, input: BrandImportApplyInput, options: { fetcher?: Fetcher } = {}): Promise<BrandKit> {
   assertBrandRole(ctx, 'BRAND_ADMIN');
   const kit = await getBrandKit(ctx);
   const applied: string[] = [];
+  const logo = input.logo ? await fetchLogo(input.logo.url, options.fetcher ?? safeFetch) : null;
 
-  if (input.colors && Object.keys(input.colors).length > 0) {
-    const existing = (kit.settings.colors ?? {}) as Record<string, string>;
-    await updateBrandSettings(ctx, { colors: { ...existing, ...input.colors } });
-    applied.push('colors');
-  }
-  if (input.fonts && (input.fonts.heading || input.fonts.body)) {
-    const existing = (kit.settings.fonts ?? {}) as Record<string, string>;
-    await updateBrandSettings(ctx, { fonts: { ...existing, ...input.fonts } });
-    applied.push('fonts');
-  }
-  if (input.description) {
-    await updateBrand(ctx, { description: input.description });
-    applied.push('description');
-  }
-  if (input.logo) {
-    try {
-      await importLogoFromUrl(ctx, input.logo.url, input.logo.type);
+  try {
+    if (logo && input.logo) {
+      await storeLogo(ctx, logo, input.logo.type);
       applied.push('logo');
-    } catch (err) {
-      logger.warn({ err, url: input.logo.url }, 'logo import failed');
-      throw err instanceof ValidationError ? err : new ValidationError('Logo could not be imported');
     }
+    if (input.colors && Object.keys(input.colors).length > 0) {
+      const existing = (kit.settings.colors ?? {}) as Record<string, string>;
+      await updateBrandSettings(ctx, { colors: { ...existing, ...input.colors } });
+      applied.push('colors');
+    }
+    if (input.fonts && (input.fonts.heading || input.fonts.body)) {
+      const existing = (kit.settings.fonts ?? {}) as Record<string, string>;
+      const next = { ...existing };
+      if (input.fonts.heading) next.heading = input.fonts.heading;
+      if (input.fonts.body) next.body = input.fonts.body;
+      await updateBrandSettings(ctx, { fonts: next });
+      applied.push('fonts');
+    }
+    if (input.description) {
+      await updateBrand(ctx, { description: input.description });
+      applied.push('description');
+    }
+  } finally {
+    await auditFromContext(ctx, {
+      action: 'brand.import.apply',
+      entityType: 'brand',
+      entityId: ctx.brandId,
+      metadata: { applied, sourceUrl: input.sourceUrl ?? null },
+    });
   }
-  await auditFromContext(ctx, {
-    action: 'brand.import.apply',
-    entityType: 'brand',
-    entityId: ctx.brandId,
-    metadata: { applied, sourceUrl: input.sourceUrl ?? null },
-  });
+  logger.info({ brandId: ctx.brandId, applied }, 'brand import applied');
   return getBrandKit(ctx);
 }

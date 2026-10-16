@@ -6,7 +6,7 @@ import { optionalStr, runAction, str } from '@/lib/actions';
 import type { ActionState } from '@/lib/actions';
 import { brandContextFor } from '@/lib/brand';
 
-export async function decideApprovalAction(brandId: string, approvalId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function decideApprovalAction(brandId: string, approvalId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     const input = approvalDecisionSchema.parse({
@@ -19,5 +19,5 @@ export async function decideApprovalAction(brandId: string, approvalId: string, 
     revalidatePath(`/app/brands/${brandId}`);
     const label = approval.status === 'APPROVED' ? 'אושר' : approval.status === 'REJECTED' ? 'נדחה' : 'נשלח לשינויים';
     return { message: `הפריט ${label}` };
-  });
+  }, formData, prev);
 }

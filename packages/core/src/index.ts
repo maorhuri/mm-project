@@ -24,6 +24,8 @@ export * from './services/media';
 export * from './services/approvals';
 export * from './services/notifications';
 export * from './services/integrations';
+export * from './services/provider-credentials';
+export * from './ai/catalog';
 export * from './services/dashboard';
 export * from './services/brand-import';
 export * from './net/safe-fetch';

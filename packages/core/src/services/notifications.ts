@@ -37,7 +37,7 @@ export async function brandAdminUserIds(ctx: BrandContext): Promise<string[]> {
       select: { userId: true },
     }),
     db.brandAccess.findMany({
-      where: { brandId: ctx.brandId, role: 'BRAND_ADMIN' },
+      where: { brandId: ctx.brandId, role: 'BRAND_ADMIN', user: { memberships: { some: { orgId: ctx.orgId } } } },
       select: { userId: true },
     }),
   ]);

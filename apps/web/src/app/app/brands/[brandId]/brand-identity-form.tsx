@@ -7,7 +7,7 @@ import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/fo
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formChecked, formKey, formValue, idleState } from '@/lib/action-state';
 import { updateBrandAction } from '../actions';
 
 export function BrandIdentityForm({ brand, disabled }: { brand: Brand; disabled: boolean }) {
@@ -19,29 +19,29 @@ export function BrandIdentityForm({ brand, disabled }: { brand: Brand; disabled:
         <CardDescription>שם, תחום, אתר וסטטוס. שינויים נרשמים ביומן הביקורת.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={action} className="grid gap-4 sm:grid-cols-2">
+        <form key={formKey(state)} action={action} className="grid gap-4 sm:grid-cols-2">
           <fieldset disabled={disabled} className="contents">
             <Field label="שם" name="name" error={fieldError(state, 'name')}>
-              <Input id="name" name="name" defaultValue={brand.name} required />
+              <Input id="name" name="name" defaultValue={formValue(state, 'name', brand.name)} required />
             </Field>
             <Field label="סטטוס" name="status" error={fieldError(state, 'status')}>
-              <Select id="status" name="status" defaultValue={brand.status}>
+              <Select id="status" name="status" defaultValue={formValue(state, 'status', brand.status)}>
                 <option value="ACTIVE">פעיל</option>
                 <option value="PAUSED">מושהה</option>
                 <option value="ARCHIVED">בארכיון</option>
               </Select>
             </Field>
             <Field label="תחום" name="industry" error={fieldError(state, 'industry')}>
-              <Input id="industry" name="industry" defaultValue={brand.industry ?? ''} />
+              <Input id="industry" name="industry" defaultValue={formValue(state, 'industry', brand.industry)} />
             </Field>
             <Field label="אתר" name="websiteUrl" error={fieldError(state, 'websiteUrl')}>
-              <Input id="websiteUrl" name="websiteUrl" type="url" dir="ltr" defaultValue={brand.websiteUrl ?? ''} />
+              <Input id="websiteUrl" name="websiteUrl" type="url" dir="ltr" defaultValue={formValue(state, 'websiteUrl', brand.websiteUrl)} />
             </Field>
             <Field label="תיאור" name="description" error={fieldError(state, 'description')} className="sm:col-span-2">
-              <Textarea id="description" name="description" rows={4} defaultValue={brand.description ?? ''} />
+              <Textarea id="description" name="description" rows={4} defaultValue={formValue(state, 'description', brand.description)} />
             </Field>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" name="isDemo" defaultChecked={brand.isDemo} className="size-4 rounded border-input" />
+              <input type="checkbox" name="isDemo" defaultChecked={formChecked(state, 'isDemo', brand.isDemo)} className="size-4 rounded border-input" />
               מותג דמו — נתוני המותג מסומנים כהדגמה בכל המערכת
             </label>
             <div className="text-xs text-muted-foreground sm:col-span-2" dir="ltr">

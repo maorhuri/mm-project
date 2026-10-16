@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formKey, formValue, idleState } from '@/lib/action-state';
 import { updateBrandDesignAction } from '../actions';
 
 const COLOR_KEYS: { key: string; label: string }[] = [
@@ -17,7 +17,18 @@ const COLOR_KEYS: { key: string; label: string }[] = [
   { key: 'foreground', label: 'טקסט' },
 ];
 
-export function BrandDesignForm({ brandId, settings, disabled }: { brandId: string; settings: BrandSettingsDto; disabled: boolean }) {
+export function BrandDesignForm({
+  brandId,
+  settings,
+  settingsVersion,
+  disabled,
+}: {
+  brandId: string;
+  settings: BrandSettingsDto;
+  /** Changes whenever settings are saved elsewhere (e.g. website import) so the inputs re-read their defaults. */
+  settingsVersion: string;
+  disabled: boolean;
+}) {
   const [state, action] = useActionState(updateBrandDesignAction.bind(null, brandId), idleState);
   const colors = (settings.colors ?? {}) as Record<string, string>;
   const fonts = (settings.fonts ?? {}) as Record<string, string>;
@@ -31,13 +42,13 @@ export function BrandDesignForm({ brandId, settings, disabled }: { brandId: stri
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={action} className="flex flex-col gap-6">
+        <form key={`${formKey(state)}-${settingsVersion}`} action={action} className="flex flex-col gap-6">
           <fieldset disabled={disabled} className="contents">
             <div>
               <h4 className="mb-3 text-sm font-medium">צבעי מותג</h4>
               <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 {COLOR_KEYS.map(({ key, label }) => (
-                  <ColorField key={key} name={`color_${key}`} label={label} value={colors[key] ?? ''} error={fieldError(state, `colors.${key}`)} />
+                  <ColorField key={key} name={`color_${key}`} label={label} value={formValue(state, `color_${key}`, colors[key])} error={fieldError(state, `colors.${key}`)} />
                 ))}
               </div>
               {Object.keys(colors).length === 0 ? (
@@ -46,14 +57,14 @@ export function BrandDesignForm({ brandId, settings, disabled }: { brandId: stri
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="פונט כותרות" name="font_heading" error={fieldError(state, 'fonts.heading')}>
-                <Input id="font_heading" name="font_heading" defaultValue={fonts.heading ?? ''} placeholder="למשל: Heebo" />
+                <Input id="font_heading" name="font_heading" defaultValue={formValue(state, 'font_heading', fonts.heading)} placeholder="למשל: Heebo" />
               </Field>
               <Field label="פונט טקסט" name="font_body" error={fieldError(state, 'fonts.body')}>
-                <Input id="font_body" name="font_body" defaultValue={fonts.body ?? ''} placeholder="למשל: Assistant" />
+                <Input id="font_body" name="font_body" defaultValue={formValue(state, 'font_body', fonts.body)} placeholder="למשל: Assistant" />
               </Field>
             </div>
             <Field label="סגנון גרפי" name="graphicStyle" error={fieldError(state, 'graphicStyle')} hint="תיאור חופשי שינחה את יצירת הקריאייטיבים: מינימליסטי, טכנולוגי, חם, צילומי וכו'">
-              <Textarea id="graphicStyle" name="graphicStyle" rows={4} defaultValue={settings.graphicStyle ?? ''} />
+              <Textarea id="graphicStyle" name="graphicStyle" rows={4} defaultValue={formValue(state, 'graphicStyle', settings.graphicStyle)} />
             </Field>
           </fieldset>
           <FormMessage state={state} />

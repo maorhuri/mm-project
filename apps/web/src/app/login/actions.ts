@@ -34,7 +34,7 @@ async function establishSession(userId: string, meta: { ipAddress: string | null
   await recordAudit({ actorUserId: userId, ...meta }, { action: 'auth.login', entityType: 'user', entityId: userId, metadata: { method } });
 }
 
-export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function loginAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const input = loginSchema.parse({ email: str(formData, 'email'), password: str(formData, 'password') });
     const meta = await requestMeta();
@@ -56,11 +56,11 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
 
     await establishSession(user.id, meta, 'password');
     redirect(next || '/app');
-  });
+  }, formData, prev);
 }
 
 /** Second step: TOTP or recovery code against the signed challenge cookie. */
-export async function mfaVerifyAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function mfaVerifyAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const jar = await cookies();
     const challenge = verifyMfaChallenge(jar.get(MFA_COOKIE)?.value);
@@ -81,5 +81,5 @@ export async function mfaVerifyAction(_prev: ActionState, formData: FormData): P
     jar.delete(MFA_COOKIE);
     await establishSession(challenge.userId, meta, verified.method);
     redirect(safeNext(str(formData, 'next')) || '/app');
-  });
+  }, formData, prev);
 }

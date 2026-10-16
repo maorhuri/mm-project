@@ -14,6 +14,7 @@ import {
   createCompetitor,
   createKnowledge,
   createProduct,
+  deleteBrand,
   deleteCompetitor,
   deleteKnowledge,
   deleteProduct,
@@ -28,17 +29,19 @@ import {
   websiteAnalyzeSchema,
 } from '@mm/core';
 import type { BrandSettingsInput } from '@mm/core';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { linesToList, numberOrNull, optionalStr, runAction, str } from '@/lib/actions';
 import type { ActionResult, ActionState } from '@/lib/actions';
 import { requireUser } from '@/lib/auth';
-import { brandContextFor } from '@/lib/brand';
+import { BRAND_COOKIE, brandContextFor } from '@/lib/brand';
 
 function revalidateBrand(brandId: string) {
   revalidatePath('/app', 'layout');
   revalidatePath(`/app/brands/${brandId}`);
 }
 
-export async function createBrandAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function createBrandAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const { actor } = await requireUser();
     const input = brandCreateSchema.parse({
@@ -53,10 +56,10 @@ export async function createBrandAction(_prev: ActionState, formData: FormData):
     const brand = await createBrand(actor, input);
     revalidatePath('/app', 'layout');
     return { message: `המותג "${brand.name}" נוצר`, data: { id: brand.id } };
-  });
+  }, formData, prev);
 }
 
-export async function updateBrandAction(brandId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function updateBrandAction(brandId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     const input = brandUpdateSchema.parse({
@@ -70,10 +73,10 @@ export async function updateBrandAction(brandId: string, _prev: ActionState, for
     await updateBrand(ctx, input);
     revalidateBrand(brandId);
     return { message: 'פרטי המותג נשמרו' };
-  });
+  }, formData, prev);
 }
 
-export async function updateBrandDesignAction(brandId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function updateBrandDesignAction(brandId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     const colors: Record<string, string> = {};
@@ -89,10 +92,10 @@ export async function updateBrandDesignAction(brandId: string, _prev: ActionStat
     await updateBrandSettings(ctx, input);
     revalidateBrand(brandId);
     return { message: 'הגדרות העיצוב נשמרו' };
-  });
+  }, formData, prev);
 }
 
-export async function updateBrandAudienceAction(brandId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function updateBrandAudienceAction(brandId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     let audiences: unknown = [];
@@ -126,7 +129,7 @@ export async function updateBrandAudienceAction(brandId: string, _prev: ActionSt
     await updateBrandSettings(ctx, input);
     revalidateBrand(brandId);
     return { message: 'קהל, טון ויעדים נשמרו' };
-  });
+  }, formData, prev);
 }
 
 export async function saveProductAction(
@@ -200,7 +203,7 @@ export async function deleteKnowledgeAction(brandId: string, knowledgeId: string
   });
 }
 
-export async function createCompetitorAction(brandId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function createCompetitorAction(brandId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     const input = competitorSchema.parse({
@@ -211,7 +214,7 @@ export async function createCompetitorAction(brandId: string, _prev: ActionState
     await createCompetitor(ctx, input);
     revalidateBrand(brandId);
     return { message: 'המתחרה נוסף' };
-  });
+  }, formData, prev);
 }
 
 export async function deleteCompetitorAction(brandId: string, competitorId: string): Promise<ActionResult> {
@@ -221,6 +224,18 @@ export async function deleteCompetitorAction(brandId: string, competitorId: stri
     revalidateBrand(brandId);
     return { message: 'המתחרה הוסר' };
   });
+}
+
+/** Permanently delete a brand (org admins; slug confirmation). Redirects to the brand list. */
+export async function deleteBrandAction(brandId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await brandContextFor(brandId);
+    await deleteBrand(ctx, str(formData, 'confirm'));
+    const jar = await cookies();
+    if (jar.get(BRAND_COOKIE)?.value === brandId) jar.delete(BRAND_COOKIE);
+    revalidatePath('/app', 'layout');
+    redirect('/app/brands?deleted=1');
+  }, formData, prev);
 }
 
 /** Analyse the brand website and return suggestions (nothing is saved). */

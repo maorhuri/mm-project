@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { KnowledgeStatusBadge } from '@/components/status-badges';
-import { idleState } from '@/lib/action-state';
+import { formChecked, formKey, formValue, idleState } from '@/lib/action-state';
 import { formatDateTime } from '@/lib/format';
 import { deleteKnowledgeAction, saveKnowledgeAction } from '../actions';
 
@@ -139,9 +139,9 @@ function KnowledgeDialog({
           <DialogTitle>{entry ? 'עריכת מידע' : 'הוספת מידע למותג'}</DialogTitle>
           <DialogDescription>טקסט מאומת בלבד — עמודי אתר, מחירון, שאלות נפוצות, מסמכים.</DialogDescription>
         </DialogHeader>
-        <form action={action} className="grid gap-4 sm:grid-cols-2">
+        <form key={formKey(state)} action={action} className="grid gap-4 sm:grid-cols-2">
           <Field label="סוג" name="kind" error={fieldError(state, 'kind')}>
-            <Select id="kind" name="kind" defaultValue={entry?.kind ?? 'MANUAL'}>
+            <Select id="kind" name="kind" defaultValue={formValue(state, 'kind', entry?.kind ?? 'MANUAL')}>
               {(Object.keys(KIND_LABELS) as KnowledgeKind[]).map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABELS[k]}
@@ -150,17 +150,17 @@ function KnowledgeDialog({
             </Select>
           </Field>
           <Field label="כותרת" name="title" error={fieldError(state, 'title')}>
-            <Input id="title" name="title" defaultValue={entry?.title ?? ''} required autoFocus />
+            <Input id="title" name="title" defaultValue={formValue(state, 'title', entry?.title)} required autoFocus />
           </Field>
           <Field label="מקור (URL)" name="sourceUrl" error={fieldError(state, 'sourceUrl')} className="sm:col-span-2">
-            <Input id="sourceUrl" name="sourceUrl" type="url" dir="ltr" defaultValue={entry?.sourceUrl ?? ''} />
+            <Input id="sourceUrl" name="sourceUrl" type="url" dir="ltr" defaultValue={formValue(state, 'sourceUrl', entry?.sourceUrl)} />
           </Field>
           <Field label="תוכן" name="content" error={fieldError(state, 'content')} className="sm:col-span-2">
-            <Textarea id="content" name="content" rows={10} defaultValue={entry?.content ?? ''} required />
+            <Textarea id="content" name="content" rows={10} defaultValue={formValue(state, 'content', entry?.content)} required />
           </Field>
           {!entry && isAdmin ? (
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" name="approveNow" className="size-4 rounded border-input" />
+              <input type="checkbox" name="approveNow" defaultChecked={formChecked(state, 'approveNow', false)} className="size-4 rounded border-input" />
               אשר מיד (מנהל מותג) — בלי לעבור דרך מרכז האישורים
             </label>
           ) : null}

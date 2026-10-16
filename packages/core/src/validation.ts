@@ -9,6 +9,14 @@ export const slugSchema = z
 export const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB');
 
 export const emailSchema = z.string().trim().toLowerCase().email();
+
+/** http(s) URLs only — rendered as links, so javascript:/data: schemes are refused. */
+export const httpUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(2000)
+  .refine((u) => /^https?:\/\//i.test(u), { message: 'Only http(s) URLs are allowed' });
 export const passwordSchema = z.string().min(10, 'Password must be at least 10 characters').max(200);
 
 export const loginSchema = z.object({
@@ -48,7 +56,7 @@ export const brandCreateSchema = z.object({
   slug: slugSchema.optional(),
   industry: z.string().trim().max(80).optional().or(z.literal('')),
   description: z.string().trim().max(2000).optional().or(z.literal('')),
-  websiteUrl: z.string().trim().url().optional().or(z.literal('')),
+  websiteUrl: httpUrlSchema.optional().or(z.literal('')),
   isDemo: z.boolean().optional(),
 });
 
@@ -57,7 +65,7 @@ export const brandUpdateSchema = z.object({
   status: z.enum(['ACTIVE', 'PAUSED', 'ARCHIVED']).optional(),
   industry: z.string().trim().max(80).nullable().optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  websiteUrl: z.string().trim().url().nullable().optional().or(z.literal('')),
+  websiteUrl: httpUrlSchema.nullable().optional().or(z.literal('')),
   locale: z.string().max(10).optional(),
   timezone: z.string().max(64).optional(),
   currency: z.string().length(3).optional(),
@@ -117,7 +125,7 @@ export const productSchema = z.object({
   audiences: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
   priceFromIls: z.number().nonnegative().max(100_000_000).nullable().optional(),
   pricingNote: z.string().trim().max(500).nullable().optional(),
-  url: z.string().trim().url().nullable().optional().or(z.literal('')),
+  url: httpUrlSchema.nullable().optional().or(z.literal('')),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -134,13 +142,13 @@ export const knowledgeSchema = z.object({
     'CAMPAIGN_DATA',
   ]),
   title: z.string().trim().min(1).max(200),
-  sourceUrl: z.string().trim().url().nullable().optional().or(z.literal('')),
+  sourceUrl: httpUrlSchema.nullable().optional().or(z.literal('')),
   content: z.string().trim().min(1).max(100_000),
 });
 
 export const competitorSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  websiteUrl: z.string().trim().url().nullable().optional().or(z.literal('')),
+  websiteUrl: httpUrlSchema.nullable().optional().or(z.literal('')),
   notes: z.string().trim().max(2000).nullable().optional(),
 });
 
@@ -150,8 +158,19 @@ export const brandAssetSchema = z.object({
   label: z.string().trim().max(80).nullable().optional(),
 });
 
+/** Accepts "mvn.co.il" as well as full URLs: a bare host gets https:// prepended; other schemes are refused. */
+export const websiteUrlInputSchema = z.preprocess(
+  (v: unknown) => {
+    if (typeof v !== 'string') return v;
+    const s = v.trim();
+    if (!s) return undefined;
+    return /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`;
+  },
+  httpUrlSchema.optional(),
+);
+
 export const websiteAnalyzeSchema = z.object({
-  url: z.string().trim().url().max(2000).optional(),
+  url: websiteUrlInputSchema,
 });
 
 export const brandImportApplySchema = z.object({
@@ -160,11 +179,18 @@ export const brandImportApplySchema = z.object({
   description: z.string().trim().min(1).max(2000).optional(),
   logo: z
     .object({
-      url: z.string().trim().url().max(2000),
+      url: httpUrlSchema,
       type: z.enum(['LOGO_PRIMARY', 'LOGO_SECONDARY', 'LOGO_ICON']),
     })
     .optional(),
-  sourceUrl: z.string().trim().url().max(2000).optional(),
+  sourceUrl: httpUrlSchema.optional(),
+});
+
+export const aiProviderIdSchema = z.enum(['openai', 'anthropic', 'google']);
+
+export const providerCredentialsSchema = z.object({
+  provider: aiProviderIdSchema,
+  apiKey: z.string().trim().min(10).max(500),
 });
 
 export const mediaUpdateSchema = z.object({
@@ -186,11 +212,23 @@ export const approvalDecisionSchema = z.object({
   note: z.string().trim().max(2000).optional(),
 });
 
+export const approvalStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED', 'SCHEDULED', 'EXECUTED', 'FAILED']);
+export const approvalTypeSchema = z.enum([
+  'CONTENT_POST',
+  'VIDEO',
+  'CONTENT_PLAN',
+  'CAMPAIGN',
+  'BUDGET',
+  'AD_CHANGE',
+  'ACTIVATION',
+  'AI_HIGH_COST',
+  'BRAND_KNOWLEDGE',
+  'OTHER',
+]);
+
 export const approvalListQuerySchema = z.object({
-  status: z
-    .enum(['PENDING', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED', 'SCHEDULED', 'EXECUTED', 'FAILED'])
-    .optional(),
-  type: z.string().max(40).optional(),
+  status: approvalStatusSchema.optional(),
+  type: approvalTypeSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(30),
 });

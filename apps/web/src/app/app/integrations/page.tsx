@@ -1,5 +1,5 @@
 import { Plug } from 'lucide-react';
-import { listIntegrationStatus } from '@mm/core';
+import { isOrgAdmin, listIntegrationStatus } from '@mm/core';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -7,11 +7,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { IntegrationStatusBadge } from '@/components/status-badges';
 import { requireBrandContext } from '@/lib/brand';
 import { formatDateTime } from '@/lib/format';
+import { ProviderKeyControls } from './provider-key-controls';
 
 export const metadata = { title: 'אינטגרציות' };
 
 const KIND_LABELS: Record<string, string> = {
-  AI_TEXT: 'AI — טקסט',
+  AI_TEXT: 'AI',
   AI_IMAGE: 'AI — תמונות',
   AI_VIDEO: 'AI — וידאו',
   AI_TTS: 'AI — קריינות',
@@ -26,16 +27,17 @@ const KIND_LABELS: Record<string, string> = {
 export default async function IntegrationsPage() {
   const ctx = await requireBrandContext();
   const integrations = await listIntegrationStatus(ctx);
+  const canManage = ctx.actor.isSuperAdmin || isOrgAdmin(ctx.orgRole);
 
   return (
     <>
-      <PageHeader title="אינטגרציות" description={`${ctx.brand.name} · חיבורים לספקי AI, Meta ו-Google. מפתחות נשמרים מוצפנים (AES-256-GCM).`} />
+      <PageHeader title="אינטגרציות" description={`${ctx.brand.name} · מפתחות AI הם ארגוניים (משותפים לכל המותגים) ונשמרים מוצפנים. Meta ו-Google Ads יתחברו ב-OAuth בשלבים 4–5.`} />
       <Alert variant="info">
         <Plug />
-        <AlertTitle>שום אינטגרציה לא מוכרזת כפעילה לפני שנבדקה מול ה-API האמיתי</AlertTitle>
+        <AlertTitle>מפתח OpenAI אחד מספיק לכל שלב 2–3 (טקסט, תמונות וקריינות)</AlertTitle>
         <AlertDescription>
-          החיבורים ייפתחו לפי מפת הדרכים: ספקי AI בשלב 2, וידאו וקריינות בשלב 3, Meta בשלב 4, Google Ads בשלב 5. עד אז
-          הסטטוס כאן הוא &quot;לא מחובר&quot; — לא נתוני דמו.
+          Anthropic ו-Google הם אופציונליים — ה-router ישתמש בהם לפי יכולת, איכות ומחיר כשהם מחוברים. הסטטוס &quot;מחובר&quot; ניתן רק אחרי
+          בדיקה אמיתית מול ה-API.
         </AlertDescription>
       </Alert>
       <div className="rounded-xl border bg-card">
@@ -44,10 +46,10 @@ export default async function IntegrationsPage() {
             <TableRow>
               <TableHead>ספק</TableHead>
               <TableHead>סוג</TableHead>
-              <TableHead>היקף</TableHead>
               <TableHead>שלב</TableHead>
               <TableHead>סטטוס</TableHead>
-              <TableHead>סנכרון אחרון</TableHead>
+              <TableHead>בדיקה אחרונה</TableHead>
+              <TableHead className="w-72">מפתח</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -55,10 +57,13 @@ export default async function IntegrationsPage() {
               <TableRow key={i.provider}>
                 <TableCell className="font-medium">
                   {i.label}
-                  {i.lastError ? <div className="text-xs text-destructive">{i.lastError}</div> : null}
+                  {i.lastError ? (
+                    <div className="max-w-md truncate text-xs text-destructive" title={i.lastError} dir="ltr">
+                      {i.lastError}
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell>{KIND_LABELS[i.kind] ?? i.kind}</TableCell>
-                <TableCell>{i.scope === 'org' ? 'ארגוני' : 'לפי מותג'}</TableCell>
                 <TableCell>
                   <Badge variant="outline">שלב {i.phase}</Badge>
                 </TableCell>
@@ -66,6 +71,13 @@ export default async function IntegrationsPage() {
                   <IntegrationStatusBadge status={i.status} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">{formatDateTime(i.lastSyncAt)}</TableCell>
+                <TableCell>
+                  {i.acceptsApiKey ? (
+                    <ProviderKeyControls provider={i.provider} hasKey={i.status !== 'DISCONNECTED'} keyHint={i.keyHint} canManage={canManage} />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">OAuth / ספק — בשלב {i.phase}</span>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

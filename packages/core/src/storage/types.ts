@@ -12,6 +12,8 @@ export interface ObjectStorage {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   get(key: string): Promise<StoredObject | null>;
   delete(key: string): Promise<void>;
+  /** Delete every object under a key prefix (e.g. a brand's folder). Returns the count. */
+  deletePrefix(prefix: string): Promise<number>;
   exists(key: string): Promise<boolean>;
   /** Pre-signed download URL, or null when the driver cannot sign. */
   presignGet(key: string, ttlSeconds: number): Promise<string | null>;

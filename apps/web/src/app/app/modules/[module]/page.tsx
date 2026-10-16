@@ -10,7 +10,8 @@ import { MODULES } from '@/lib/nav';
 
 export default async function ModulePage({ params }: { params: Promise<{ module: string }> }) {
   const { module } = await params;
-  const info = MODULES[module];
+  // Own-property check: "constructor" / "__proto__" must 404, not resolve Object.prototype members.
+  const info = Object.hasOwn(MODULES, module) ? MODULES[module] : undefined;
   if (!info) notFound();
 
   return (

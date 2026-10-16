@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Images } from 'lucide-react';
-import { listMedia, mediaListQuerySchema } from '@mm/core';
+import { z } from 'zod';
+import { listMedia } from '@mm/core';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -22,16 +23,21 @@ const KINDS = [
   { value: 'DOCUMENT', label: 'מסמכים' },
 ];
 
-export default async function MediaPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+const kindSchema = z.enum(['IMAGE', 'VIDEO', 'AUDIO', 'FONT', 'DOCUMENT', 'OTHER']).optional().catch(undefined);
+const textSchema = z.string().trim().max(100).optional().catch(undefined);
+
+export default async function MediaPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const ctx = await requireBrandContext();
-  const query = mediaListQuerySchema.parse({
-    kind: sp.kind || undefined,
-    search: sp.search || undefined,
-    tag: sp.tag || undefined,
-    page: sp.page ?? 1,
+  // Lenient URL parsing: bad filters fall back to defaults instead of crashing the page.
+  const query = {
+    kind: kindSchema.parse(first(sp.kind) || undefined),
+    search: textSchema.parse(first(sp.search) || undefined),
+    tag: z.string().trim().max(40).optional().catch(undefined).parse(first(sp.tag) || undefined),
+    page: z.coerce.number().int().min(1).catch(1).parse(first(sp.page) ?? 1),
     pageSize: 40,
-  });
+  };
   const page = await listMedia(ctx, query);
   const canEdit = ctx.brandRole !== 'VIEWER';
   const totalPages = Math.max(1, Math.ceil(page.total / page.pageSize));

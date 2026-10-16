@@ -42,11 +42,12 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 | Prisma schema (18 tables) + initial migration | ✅ verified |
 | Tenant-scoped Prisma client (`forBrand`) | ✅ verified (unit + integration + live probe) |
 | Authentication: argon2id, server sessions, login/logout, change password, session revocation | ✅ verified (API); UI forms built, not yet clicked through |
-| **Two-factor authentication (Google Authenticator / TOTP)**: QR enrolment with manual key, 8 one-time recovery codes, two-step login (UI `/login/mfa` + API `/auth/mfa`), replay protection, disable with password+code, regenerate codes, optional `MFA_REQUIRED_FOR_ADMINS` gate; login/MFA rate limiting on Redis | 🟡 built 2026-10-15 (owner request) — RFC 6238 vectors + flow tests written; live verification pending |
+| **Two-factor authentication (Google Authenticator / TOTP)**: QR enrolment with manual key, 8 one-time recovery codes, two-step login (UI `/login/mfa` + API `/auth/mfa`), replay protection, disable with password+code, regenerate codes, optional `MFA_REQUIRED_FOR_ADMINS` gate; login/MFA rate limiting on Redis | ✅ verified live 2026-10-15 23:50 (deploy `890a4b4`): 11/11 end-to-end checks — mfa_required on login, TOTP accepted once and replay rejected, recovery code consumed once, 6th attempt → 429, `/login/mfa` guard. RFC 6238 vectors in tests (40/40) |
+| Logout from the user menu | ✅ fixed in `890a4b4` (Radix closed the menu before the nested form submitted; now invoked from `onSelect`) |
 | Organizations, memberships, brand access, RBAC gate | ✅ verified (role=BRAND_ADMIN for owner; editor/viewer paths covered by tests) |
 | Brand CRUD, brand switching (cookie), demo labelling | ✅ create verified live; switch UI built |
 | Brand Kit: identity, logos, colors/fonts/style, audiences/tone/claims/keywords, content targets, budget, products, knowledge (with approval), competitors | 🟡 built; products + knowledge verified live via API; forms need a manual click-through |
-| Brand Kit → **ייבוא מהאתר**: analyse the brand website (CSS variables, theme-color, @font-face, Google Fonts, logo candidates, meta description) → suggestions → apply on confirmation. SSRF-guarded fetcher, offline parser tests | 🟡 built 2026-10-15 (owner request) — adversarial review + live verification pending |
+| Brand Kit → **ייבוא מהאתר**: analyse the brand website (CSS variables, theme-color, @font-face, Google Fonts, logo candidates, meta description) → suggestions → apply on confirmation. SSRF-guarded fetcher, offline parser tests | ✅ live since `b5df2bb`; analysis verified on mvn.co.il from the server (primary `#007bff`, brand magenta `#d946a0`, Noto Sans Hebrew, `/img/logo.png` ranked first). "Apply" path covered by tests; adversarial review pending |
 | Media Library: upload (multipart), list/search/filter, edit metadata, delete, access-controlled streaming, S3 storage | ✅ upload/download/auth/isolation verified live; UI grid built |
 | Approval Center: list/filter, approve/reject/changes with notes, handler registry, knowledge side effect | ✅ verified live (PENDING → APPROVED → knowledge APPROVED) |
 | Notifications (in-app), audit log, dashboard overview with live counts | 🟡 built; notification creation covered by tests |
@@ -58,9 +59,20 @@ layer as the UI) passed **21/21** checks and the test brand was removed afterwar
 | Docs: README, ARCHITECTURE, REQUIREMENTS, DATABASE_SCHEMA, ROADMAP, SECURITY, DEPLOYMENT, API_INTEGRATIONS, TESTING | ✅ |
 | Tests: tenant scope (6), tenant isolation (7), auth/sessions/crypto (6), approvals/media/brand kit (6) | ✅ 25/25 on the server |
 
+### Adversarial reviews (2026-10-16)
+| Review | Result |
+| --- | --- |
+| Phase 1 codebase (53 agents, 5 lenses, 2 verifiers per finding) | 17 confirmed → all fixed: stale-cookie `/app`↔`/login` redirect loop, deploy rollback on failed health check, Json `null` writes, audit gaps, enum-validated approval filter, lenient page query parsing, `Object.prototype` key crash, worker log label, http(s)-only URLs, health-endpoint error leak, sliding session cookie, React 19 form reset (values echoed back on validation errors), stale dialog state |
+| Website import (60 agents, 4 lenses) | 28 confirmed → all fixed: DNS-rebinding SSRF (socket-pinned lookup), exponential `var()` expansion, modern colour spaces, charset sniffing, per-call font state, logo validation order/atomicity, UI (font opt-out, analysis survives tab switch, clear errors, bare domains) |
+
+### Owner requests (2026-10-16)
+| Item | Status |
+| --- | --- |
+| Delete brands (org admins, slug confirmation, cascade + storage cleanup, audited; UI + `DELETE /api/v1/brands/:id`) | 🟡 built — tests green on dev; live after next deploy |
+| AI provider API keys in the Integrations page (encrypted, org-wide, brand override, real connection test) + verified model catalog | 🟡 built — live after next deploy |
+
 ## Known gaps / next steps
-- Manual UI click-through of every Phase 1 screen (owner + Claude); fix anything found.
-- Adversarial static review of the Phase 1 code is running; confirmed findings will be fixed and pushed.
+- Manual UI click-through of every screen (owner + Claude); fix anything found.
 - User invitations and per-brand grant management UI.
 - Rate limiting on uploads / website import (login + MFA are limited).
 - Super-admin MFA reset flow.

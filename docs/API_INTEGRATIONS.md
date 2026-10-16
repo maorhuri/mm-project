@@ -21,6 +21,7 @@ caller's role on the brand first; a brand the caller cannot access returns 403
 | POST | `/brands` | org OWNER/ADMIN | Create brand |
 | GET | `/brands/:brandId` | VIEWER | Brand Kit (brand, settings, assets, products, competitors, knowledge counts, role) |
 | PATCH | `/brands/:brandId` | BRAND_ADMIN | Update identity/status |
+| DELETE | `/brands/:brandId` | org OWNER/ADMIN | `{ confirm: "<slug>" }` — permanent: database cascade + object storage; audited |
 | PUT | `/brands/:brandId/settings` | BRAND_ADMIN | Partial Brand Kit settings update |
 | GET/POST | `/brands/:brandId/products` | VIEWER / EDITOR | List / create product |
 | PATCH/DELETE | `/brands/:brandId/products/:productId` | EDITOR | Update / delete |
@@ -42,11 +43,16 @@ ones the UI uses. An OpenAPI document will be generated from them in Phase 2.
 ### Outbound fetches (website import)
 
 The import feature is the only place the server fetches user-supplied URLs.
-`packages/core/src/net/safe-fetch.ts` allows http(s) only, resolves the host and
-refuses private / loopback / link-local / mapped addresses on **every redirect
-hop**, caps response size (2 MB HTML, 1.5 MB per stylesheet, 3 MB logo) and time
-(≤ 15 s), and identifies itself with a `MM-Marketing-OS` user agent. Results are
-suggestions only; the user chooses what to apply.
+`packages/core/src/net/safe-fetch.ts` allows http(s) on ports 80/443 only and
+pins every socket to vetted addresses: the private/loopback/link-local/mapped
+check runs **inside the connector's DNS lookup** (undici `Agent` with a guarded
+`lookup`), so a DNS answer that changes between validation and connection
+(rebinding) cannot reach a private address, on any redirect hop. Response size
+(2 MB HTML, 1.5 MB per stylesheet, 3 MB logo) and time (≤ 15 s) are capped, CSS
+`var()` resolution is bounded (memoised, ≤ 32 references, 2 KB output), images
+are decoded with a 25 MP limit, and the user agent is `MM-Marketing-OS`. Results
+are suggestions only; the user chooses what to apply, and the logo is fetched
+and validated before anything is written.
 
 ## External integrations — status
 

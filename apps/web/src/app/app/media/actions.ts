@@ -6,7 +6,7 @@ import { linesToList, optionalStr, runAction } from '@/lib/actions';
 import type { ActionResult, ActionState } from '@/lib/actions';
 import { brandContextFor } from '@/lib/brand';
 
-export async function updateMediaAction(brandId: string, mediaId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function updateMediaAction(brandId: string, mediaId: string, prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const ctx = await brandContextFor(brandId);
     const input = mediaUpdateSchema.parse({
@@ -17,7 +17,7 @@ export async function updateMediaAction(brandId: string, mediaId: string, _prev:
     await updateMedia(ctx, mediaId, input);
     revalidatePath('/app/media');
     return { message: 'הפרטים נשמרו' };
-  });
+  }, formData, prev);
 }
 
 export async function deleteMediaAction(brandId: string, mediaId: string): Promise<ActionResult> {

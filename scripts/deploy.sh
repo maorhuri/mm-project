@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # MM Marketing OS — production deploy: build an isolated release, gate it on
 # migrations + typecheck + lint + build + tests, then switch `current` atomically
-# and restart services. A failed step leaves the running release untouched.
+# and restart services. A failed step leaves the running release untouched; a
+# failure AFTER activation (restart / health check) rolls back to the previous
+# release automatically.
 #
 #   scripts/deploy.sh [<git sha>]      (run as root on the server; invoked by mm-autodeploy)
 set -euo pipefail
@@ -13,19 +15,40 @@ APP_USER=mm
 SHA="${1:-$(git -C "$REPO" rev-parse HEAD)}"
 SHORT=${SHA:0:8}
 REL="$BASE/releases/$(date +%Y%m%d-%H%M%S)-$SHORT"
+PREV=$(readlink "$BASE/current" 2>/dev/null || true)
+ACTIVATED=0
 
 log() { echo "[deploy $(date +%H:%M:%S)] $*"; }
+switch_current() {
+  ln -sfn "$1" "$BASE/current.new"
+  mv -Tf "$BASE/current.new" "$BASE/current"
+}
+healthy() {
+  for _ in $(seq 1 20); do
+    curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
 on_error() {
-  log "FAILED (exit $1, line $2) — current release untouched"
+  local rc=$1 line=$2
   echo "$SHA" > "$SHARED/failed_sha"
-  exit "$1"
+  if [ "$ACTIVATED" = 1 ] && [ -n "$PREV" ] && [ -d "$PREV" ]; then
+    log "FAILED (exit $rc, line $line) after activation — rolling back to $PREV"
+    switch_current "$PREV"
+    systemctl restart mm-web mm-worker || true
+    if healthy; then log "rollback OK — previous release is serving"; else log "rollback: previous release did not become healthy — manual attention required"; fi
+  else
+    log "FAILED (exit $rc, line $line) — current release untouched"
+  fi
+  exit "$rc"
 }
 trap 'on_error $? $LINENO' ERR
 
 log "release $SHORT -> $REL"
 mkdir -p "$REL"
 git -C "$REPO" archive "$SHA" | tar -x -C "$REL"
-for d in "" apps/web apps/worker packages/db; do
+for d in "" apps/web apps/worker packages/db packages/core; do
   ln -sfn "$SHARED/.env" "$REL/${d:+$d/}.env"
 done
 cd "$REL"
@@ -57,14 +80,10 @@ npm run -s test
 
 log "activate"
 chown -R "$APP_USER:$APP_USER" "$REL"
-ln -sfn "$REL" "$BASE/current.new"
-mv -Tf "$BASE/current.new" "$BASE/current"
+ACTIVATED=1
+switch_current "$REL"
 systemctl restart mm-web mm-worker
-for _ in $(seq 1 20); do
-  curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1 && break
-  sleep 2
-done
-curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+healthy
 echo "$SHA" > "$SHARED/deployed_sha"
 rm -f "$SHARED/failed_sha"
 

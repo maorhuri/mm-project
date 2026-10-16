@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { BadgeCheck } from 'lucide-react';
-import { approvalListQuerySchema, listApprovals } from '@mm/core';
+import { z } from 'zod';
+import { approvalStatusSchema, listApprovals } from '@mm/core';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,12 +23,17 @@ const FILTERS: { value: string; label: string }[] = [
   { value: '', label: 'הכול' },
 ];
 
-export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const ctx = await requireBrandContext();
-  const statusParam = sp.status === undefined ? 'PENDING' : sp.status;
-  const query = approvalListQuerySchema.parse({ status: statusParam || undefined, page: sp.page ?? 1, pageSize: 30 });
-  const result = await listApprovals(ctx, query);
+  // Lenient URL parsing: a bad ?status= or ?page= falls back instead of crashing the page.
+  const rawStatus = first(sp.status);
+  const statusParam = rawStatus === undefined ? 'PENDING' : rawStatus;
+  const status = approvalStatusSchema.optional().catch(undefined).parse(statusParam || undefined);
+  const page = z.coerce.number().int().min(1).catch(1).parse(first(sp.page) ?? 1);
+  const result = await listApprovals(ctx, { status, page, pageSize: 30 });
   const isAdmin = ctx.brandRole === 'BRAND_ADMIN';
 
   return (

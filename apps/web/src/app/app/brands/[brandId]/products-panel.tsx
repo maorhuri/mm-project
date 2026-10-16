@@ -12,7 +12,7 @@ import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/fo
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formChecked, formKey, formValue, idleState } from '@/lib/action-state';
 import { formatIls } from '@/lib/format';
 import { deleteProductAction, saveProductAction } from '../actions';
 
@@ -120,39 +120,39 @@ function ProductDialog({ brandId, product, onClose }: { brandId: string; product
           <DialogTitle>{product ? 'עריכת מוצר' : 'מוצר / שירות חדש'}</DialogTitle>
           <DialogDescription>רק מידע מאומת. מחירים ותכונות שלא ברורים — להשאיר ריק.</DialogDescription>
         </DialogHeader>
-        <form action={action} className="grid gap-4 sm:grid-cols-2">
+        <form key={formKey(state)} action={action} className="grid gap-4 sm:grid-cols-2">
           <Field label="שם" name="name" error={fieldError(state, 'name')}>
-            <Input id="name" name="name" defaultValue={product?.name ?? ''} required autoFocus />
+            <Input id="name" name="name" defaultValue={formValue(state, 'name', product?.name)} required autoFocus />
           </Field>
           <Field label="Slug" name="slug" error={fieldError(state, 'slug')}>
-            <Input id="slug" name="slug" dir="ltr" defaultValue={product?.slug ?? ''} />
+            <Input id="slug" name="slug" dir="ltr" defaultValue={formValue(state, 'slug', product?.slug)} />
           </Field>
           <Field label="קטגוריה" name="category" error={fieldError(state, 'category')}>
-            <Input id="category" name="category" defaultValue={product?.category ?? ''} />
+            <Input id="category" name="category" defaultValue={formValue(state, 'category', product?.category)} />
           </Field>
           <Field label="קישור" name="url" error={fieldError(state, 'url')}>
-            <Input id="url" name="url" type="url" dir="ltr" defaultValue={product?.url ?? ''} />
+            <Input id="url" name="url" type="url" dir="ltr" defaultValue={formValue(state, 'url', product?.url)} />
           </Field>
           <Field label="תיאור" name="description" error={fieldError(state, 'description')} className="sm:col-span-2">
-            <Textarea id="description" name="description" rows={3} defaultValue={product?.description ?? ''} />
+            <Textarea id="description" name="description" rows={3} defaultValue={formValue(state, 'description', product?.description)} />
           </Field>
           <Field label="תכונות מאומתות" name="features" hint="שורה לכל תכונה" error={fieldError(state, 'features')}>
-            <Textarea id="features" name="features" rows={4} defaultValue={features.join('\n')} />
+            <Textarea id="features" name="features" rows={4} defaultValue={formValue(state, 'features', features.join('\n'))} />
           </Field>
           <Field label="קהלי יעד" name="audiences" hint="שורה לכל קהל" error={fieldError(state, 'audiences')}>
-            <Textarea id="audiences" name="audiences" rows={4} defaultValue={audiences.join('\n')} />
+            <Textarea id="audiences" name="audiences" rows={4} defaultValue={formValue(state, 'audiences', audiences.join('\n'))} />
           </Field>
           <Field label="מחיר החל מ- (₪)" name="priceFromIls" error={fieldError(state, 'priceFromIls')}>
-            <Input id="priceFromIls" name="priceFromIls" type="number" min={0} step="0.01" defaultValue={product?.priceFromIls ?? ''} />
+            <Input id="priceFromIls" name="priceFromIls" type="number" min={0} step="0.01" defaultValue={formValue(state, 'priceFromIls', product?.priceFromIls)} />
           </Field>
           <Field label="הערת תמחור" name="pricingNote" error={fieldError(state, 'pricingNote')}>
-            <Input id="pricingNote" name="pricingNote" defaultValue={product?.pricingNote ?? ''} />
+            <Input id="pricingNote" name="pricingNote" defaultValue={formValue(state, 'pricingNote', product?.pricingNote)} />
           </Field>
           <Field label="סדר תצוגה" name="sortOrder">
-            <Input id="sortOrder" name="sortOrder" type="number" defaultValue={product?.sortOrder ?? 0} />
+            <Input id="sortOrder" name="sortOrder" type="number" defaultValue={formValue(state, 'sortOrder', product?.sortOrder ?? 0)} />
           </Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm">
-            <input type="checkbox" name="isActive" defaultChecked={product?.isActive ?? true} className="size-4 rounded border-input" />
+            <input type="checkbox" name="isActive" defaultChecked={formChecked(state, 'isActive', product?.isActive ?? true)} className="size-4 rounded border-input" />
             פעיל לשיווק
           </label>
           <div className="sm:col-span-2">

@@ -11,9 +11,11 @@ import type {
   Prisma,
 } from '@mm/db';
 import { auditFromContext, recordAudit } from '../audit';
-import { ConflictError, NotFoundError } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { logger } from '../logger';
+import { getStorage } from '../storage';
 import type { Actor, BrandContext } from '../tenancy/context';
-import { assertBrandRole, requireOrgAdmin } from '../tenancy/context';
+import { assertBrandRole, isOrgAdmin, requireOrgAdmin } from '../tenancy/context';
 import type {
   BrandAssetInput,
   BrandCreateInput,
@@ -87,6 +89,46 @@ export async function getBrand(ctx: BrandContext): Promise<Brand> {
   const brand = await ctx.db.brand.findUnique({ where: { id: ctx.brandId } });
   if (!brand) throw new NotFoundError('brand');
   return brand;
+}
+
+/**
+ * Permanently delete a brand and everything it owns (database cascade + object
+ * storage). Only organization OWNER/ADMIN (or a super admin) may do this, and
+ * the caller must repeat the brand slug. Archive (status) is the reversible option.
+ */
+export async function deleteBrand(ctx: BrandContext, confirmSlug: string): Promise<{ mediaObjectsDeleted: number }> {
+  if (!ctx.actor.isSuperAdmin && !isOrgAdmin(ctx.orgRole)) {
+    throw new ForbiddenError('Only organization admins can delete a brand');
+  }
+  const brand = await getBrand(ctx);
+  if (confirmSlug.trim() !== brand.slug) {
+    throw new ValidationError('Confirmation does not match', [{ path: 'confirm', message: 'יש להקליד את ה-slug של המותג בדיוק כפי שהוא' }]);
+  }
+  const [media, products, knowledge, approvals] = await Promise.all([
+    ctx.db.mediaAsset.count(),
+    ctx.db.brandProduct.count(),
+    ctx.db.brandKnowledge.count(),
+    ctx.db.approval.count(),
+  ]);
+  // Root client on purpose: the brand row itself is the tenant boundary; access was verified above.
+  await db.brand.delete({ where: { id: brand.id } });
+  let mediaObjectsDeleted = 0;
+  try {
+    mediaObjectsDeleted = await getStorage().deletePrefix(`brands/${brand.id}/`);
+  } catch (err) {
+    logger.error({ err, brandId: brand.id }, 'brand storage cleanup failed after delete');
+  }
+  await recordAudit(
+    { orgId: brand.orgId, brandId: null, actorUserId: ctx.actor.userId, ipAddress: ctx.request?.ipAddress ?? null, userAgent: ctx.request?.userAgent ?? null },
+    {
+      action: 'brand.delete',
+      entityType: 'brand',
+      entityId: brand.id,
+      before: { name: brand.name, slug: brand.slug, status: brand.status, counts: { media, products, knowledge, approvals } },
+      metadata: { mediaObjectsDeleted },
+    },
+  );
+  return { mediaObjectsDeleted };
 }
 
 // ---------------------------------------------------------------------------

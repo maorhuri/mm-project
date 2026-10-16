@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formKey, formValue, idleState } from '@/lib/action-state';
 import { formatBytes, formatDateTime } from '@/lib/format';
 import { deleteMediaAction, updateMediaAction } from './actions';
 
@@ -115,16 +115,16 @@ function MediaDialog({ brandId, asset, canEdit, onClose }: { brandId: string; as
               </a>
             )}
           </div>
-          <form action={action} className="flex flex-col gap-3">
+          <form key={formKey(state)} action={action} className="flex flex-col gap-3">
             <fieldset disabled={!canEdit} className="contents">
               <Field label="כותרת" name="title" error={fieldError(state, 'title')}>
-                <Input id="title" name="title" defaultValue={asset.title ?? ''} />
+                <Input id="title" name="title" defaultValue={formValue(state, 'title', asset.title)} />
               </Field>
               <Field label="טקסט חלופי (alt)" name="altText" error={fieldError(state, 'altText')}>
-                <Input id="altText" name="altText" defaultValue={asset.altText ?? ''} />
+                <Input id="altText" name="altText" defaultValue={formValue(state, 'altText', asset.altText)} />
               </Field>
               <Field label="תגיות" name="tags" hint="תגית בכל שורה או מופרדות בפסיק" error={fieldError(state, 'tags')}>
-                <Textarea id="tags" name="tags" rows={3} defaultValue={asset.tags.join('\n')} />
+                <Textarea id="tags" name="tags" rows={3} defaultValue={formValue(state, 'tags', asset.tags.join('\n'))} />
               </Field>
             </fieldset>
             <div className="flex flex-wrap gap-1">

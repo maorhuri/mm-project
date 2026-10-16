@@ -93,6 +93,32 @@ describe('tenant isolation', () => {
     );
   });
 
+  it('deleting a brand removes its rows and storage objects, never another brand', async () => {
+    const { owner, editor, brandA, brandB } = await twoBrandFixture();
+    const { deleteBrand } = await import('../src/services/brands');
+    const { getStorage } = await import('../src/storage');
+    const png = await pngBuffer();
+    const ctxA = await ctxFor(owner, brandA.id);
+    const ctxB = await ctxFor(owner, brandB.id);
+    await uploadMedia(ctxA, { data: png, originalName: 'a.png', mimeType: 'image/png' });
+    await uploadMedia(ctxB, { data: png, originalName: 'b.png', mimeType: 'image/png' });
+    await createProduct(ctxA, { name: 'P' });
+    const storage = getStorage() as { size?: () => number };
+    const before = storage.size?.() ?? 0;
+
+    await expect(deleteBrand(await ctxFor(editor, brandA.id), brandA.slug)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(deleteBrand(ctxA, 'wrong-slug')).rejects.toThrow(/Confirmation/);
+
+    const res = await deleteBrand(ctxA, brandA.slug);
+    expect(res.mediaObjectsDeleted).toBe(1);
+    expect(storage.size?.()).toBe(before - 1);
+    expect(await db.brand.findUnique({ where: { id: brandA.id } })).toBeNull();
+    expect(await db.mediaAsset.count({ where: { brandId: brandA.id } })).toBe(0);
+    expect(await db.brandProduct.count({ where: { brandId: brandA.id } })).toBe(0);
+    expect(await db.mediaAsset.count({ where: { brandId: brandB.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { action: 'brand.delete', entityId: brandA.id } })).toBe(1);
+  });
+
   it('super admins can access every brand', async () => {
     const { brandB } = await twoBrandFixture();
     const { makeUser } = await import('./helpers');

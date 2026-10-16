@@ -9,14 +9,15 @@ import {
   invalidateAllUserSessions,
   mfaDisableSchema,
   mfaVerifySchema,
+  recordAudit,
   regenerateRecoveryCodes,
   startMfaEnrollment,
 } from '@mm/core';
 import { runAction, str } from '@/lib/actions';
 import type { ActionResult, ActionState } from '@/lib/actions';
-import { requireUser } from '@/lib/auth';
+import { requestMeta, requireUser } from '@/lib/auth';
 
-export async function changePasswordAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function changePasswordAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const { user, session } = await requireUser();
     const input = changePasswordSchema.parse({
@@ -27,13 +28,15 @@ export async function changePasswordAction(_prev: ActionState, formData: FormDat
     const res = await changePassword(user.id, input.currentPassword, input.newPassword, session.id);
     revalidatePath('/app/settings');
     return { message: `הסיסמה שונתה. ${res.revokedSessions} חיבורים אחרים נותקו.` };
-  });
+  }, formData, prev);
 }
 
 export async function revokeOtherSessionsAction(): Promise<ActionResult> {
   return runAction(async () => {
     const { user, session } = await requireUser();
     const count = await invalidateAllUserSessions(user.id, session.id);
+    const meta = await requestMeta();
+    await recordAudit({ actorUserId: user.id, ...meta }, { action: 'auth.sessions.revoke_others', entityType: 'user', entityId: user.id, metadata: { revokedSessions: count } });
     revalidatePath('/app/settings');
     return { message: `${count} חיבורים נותקו` };
   });
@@ -51,33 +54,33 @@ export async function startMfaEnrollmentAction(): Promise<ActionResult> {
 }
 
 /** Confirms the first code; returns { recoveryCodes } in `data` (shown once). */
-export async function confirmMfaEnrollmentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function confirmMfaEnrollmentAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const { user, session } = await requireUser();
     const { code } = mfaVerifySchema.parse({ code: str(formData, 'code') });
     const res = await confirmMfaEnrollment(user.id, code, { keepSessionId: session.id });
     revalidatePath('/app', 'layout');
     return { message: 'אימות דו-שלבי הופעל', data: res };
-  });
+  }, formData, prev);
 }
 
-export async function disableMfaAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function disableMfaAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const { user } = await requireUser();
     const input = mfaDisableSchema.parse({ password: str(formData, 'password'), code: str(formData, 'code') });
     await disableMfa(user.id, input);
     revalidatePath('/app', 'layout');
     return { message: 'אימות דו-שלבי הושבת' };
-  });
+  }, formData, prev);
 }
 
 /** Returns { recoveryCodes } in `data`. */
-export async function regenerateRecoveryCodesAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function regenerateRecoveryCodesAction(prev: ActionState, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
     const { user } = await requireUser();
     const { code } = mfaVerifySchema.parse({ code: str(formData, 'code') });
     const res = await regenerateRecoveryCodes(user.id, code);
     revalidatePath('/app/settings');
     return { message: 'נוצרו קודי גיבוי חדשים — הישנים בוטלו', data: res };
-  });
+  }, formData, prev);
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@mm/db';
+import { logger } from '@mm/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,8 @@ export async function GET() {
       time: new Date().toISOString(),
     });
   } catch (err) {
-    return NextResponse.json(
-      { status: 'degraded', db: 'error', error: err instanceof Error ? err.message : String(err) },
-      { status: 503 },
-    );
+    // Details go to the server log only — this endpoint is unauthenticated.
+    logger.error({ err }, 'health check failed');
+    return NextResponse.json({ status: 'degraded', db: 'error' }, { status: 503 });
   }
 }

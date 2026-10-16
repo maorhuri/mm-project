@@ -1,4 +1,6 @@
-process.env.MM_SERVICE = 'worker';
+// Must be the first import: sets MM_SERVICE before @mm/core creates the logger
+// (ESM/esbuild hoist imports above any statement in this file).
+import './env';
 
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
@@ -66,10 +68,15 @@ function makeWorker(queue: QueueName): Worker {
         name: job.name,
         bullJobId: job.id ?? null,
         brandId: typeof data.brandId === 'string' ? data.brandId : null,
+        idempotencyKey: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : null,
         payload: data,
         attempts: job.attemptsMade + 1,
       });
       const log = logger.child({ queue, job: job.name, jobId: job.id });
+      if (record.alreadyCompleted) {
+        log.warn('job already completed under its idempotency key — skipping');
+        return record.result;
+      }
       log.info('job started');
       try {
         const result = await processor(job);

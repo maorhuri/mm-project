@@ -2,9 +2,11 @@ import type { Readable } from 'node:stream';
 import {
   CreateBucketCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -79,6 +81,24 @@ export class S3Storage implements ObjectStorage {
 
   async delete(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async deletePrefix(prefix: string): Promise<number> {
+    if (!prefix || prefix === '/') throw new Error('deletePrefix: refusing to delete the whole bucket');
+    let token: string | undefined;
+    let deleted = 0;
+    do {
+      const list = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }),
+      );
+      const keys = (list.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
+      if (keys.length > 0) {
+        await this.client.send(new DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: keys, Quiet: true } }));
+        deleted += keys.length;
+      }
+      token = list.IsTruncated ? list.NextContinuationToken : undefined;
+    } while (token);
+    return deleted;
   }
 
   async exists(key: string): Promise<boolean> {

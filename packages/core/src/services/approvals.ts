@@ -101,7 +101,7 @@ export async function listApprovals(
 ): Promise<{ items: ApprovalListItem[]; total: number; page: number; pageSize: number }> {
   const where: Prisma.ApprovalWhereInput = {};
   if (query.status) where.status = query.status;
-  if (query.type) where.type = query.type as ApprovalType;
+  if (query.type) where.type = query.type;
   const [items, total] = await Promise.all([
     ctx.db.approval.findMany({
       where,
@@ -148,21 +148,7 @@ export async function decideApproval(
       decisionNote: input.note ?? null,
     },
   });
-
-  const handler = handlers.get(updated.subjectType);
-  if (handler) {
-    try {
-      await handler(ctx, updated);
-    } catch (err) {
-      logger.error({ err, approvalId }, 'approval side effect failed');
-      await ctx.db.approval.update({
-        where: { id: approvalId },
-        data: { status: 'FAILED', errorMessage: err instanceof Error ? err.message : String(err) },
-      });
-      throw err;
-    }
-  }
-
+  // The decision itself is audited before any side effect so a failing handler cannot hide it.
   await auditFromContext(ctx, {
     action: `approval.${input.decision.toLowerCase()}`,
     entityType: 'approval',
@@ -170,6 +156,27 @@ export async function decideApproval(
     before: { status: approval.status },
     after: { status: updated.status, note: updated.decisionNote },
   });
+
+  const handler = handlers.get(updated.subjectType);
+  if (handler) {
+    try {
+      await handler(ctx, updated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error({ err, approvalId }, 'approval side effect failed');
+      await ctx.db.approval
+        .update({ where: { id: approvalId }, data: { status: 'FAILED', errorMessage: message } })
+        .catch(() => undefined);
+      await auditFromContext(ctx, {
+        action: 'approval.failed',
+        entityType: 'approval',
+        entityId: approvalId,
+        before: { status: updated.status },
+        after: { status: 'FAILED', error: message.slice(0, 500) },
+      });
+      throw err;
+    }
+  }
   return updated;
 }
 

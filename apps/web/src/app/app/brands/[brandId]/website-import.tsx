@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { callAction, firstFieldError } from '@/lib/action-state';
 import { cn } from '@/lib/utils';
 import { analyzeWebsiteAction, applyWebsiteImportAction } from '../actions';
 
@@ -62,11 +63,16 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
   const [analyzing, startAnalyze] = useTransition();
   const [applying, startApply] = useTransition();
 
+  const showError = (res: { status: 'error'; message: string; fieldErrors?: Record<string, string> }) => {
+    const detail = firstFieldError(res);
+    toast.error(detail ? `${res.message} — ${detail}` : res.message);
+  };
+
   const analyze = () => {
     startAnalyze(async () => {
-      const res = await analyzeWebsiteAction(brandId, url);
+      const res = await callAction(analyzeWebsiteAction(brandId, url));
       if (res.status === 'error') {
-        toast.error(res.message);
+        showError(res);
         return;
       }
       const a = res.data as BrandSiteAnalysis;
@@ -97,17 +103,24 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
     if (!analysis) return;
     const colors: Partial<Record<Role, string>> = {};
     for (const [hex, role] of Object.entries(roles)) if (role) colors[role] = hex;
-    const payload = {
-      colors: Object.keys(colors).length ? colors : undefined,
-      fonts: fonts.heading || fonts.body ? { heading: fonts.heading || undefined, body: fonts.body || undefined } : undefined,
-      description: useDescription && analysis.description ? analysis.description : undefined,
-      logo: logo ?? undefined,
-      sourceUrl: analysis.finalUrl,
-    };
+    const fontSel: { heading?: string; body?: string } = {};
+    if (fonts.heading) fontSel.heading = fonts.heading;
+    if (fonts.body) fontSel.body = fonts.body;
+    const payload: Record<string, unknown> = { sourceUrl: analysis.finalUrl };
+    if (Object.keys(colors).length) payload.colors = colors;
+    if (Object.keys(fontSel).length) payload.fonts = fontSel;
+    if (useDescription && analysis.description) payload.description = analysis.description.slice(0, 2000);
+    if (logo) payload.logo = logo;
+    if (Object.keys(payload).length === 1) {
+      toast.error('לא נבחר שום דבר להחלה');
+      return;
+    }
     startApply(async () => {
-      const res = await applyWebsiteImportAction(brandId, payload);
-      if (res.status === 'error') toast.error(res.message);
-      else {
+      const res = await callAction(applyWebsiteImportAction(brandId, payload));
+      if (res.status === 'error') {
+        showError(res);
+        router.refresh();
+      } else {
         toast.success(res.message);
         setAnalysis(null);
         router.refresh();
@@ -128,16 +141,19 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative flex-1">
+          <div className="relative flex-1" dir="ltr">
             <Globe className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://www.example.co.il"
+              placeholder="www.example.co.il"
               dir="ltr"
               className="ps-9"
               disabled={disabled || analyzing}
               aria-label="כתובת האתר"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && url.trim() && !analyzing) analyze();
+              }}
             />
           </div>
           <Button onClick={analyze} disabled={disabled || analyzing || !url.trim()}>
@@ -216,7 +232,9 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
                     </Select>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <p className="text-xs text-muted-foreground">לא נבחר לוגו — הלוגו הקיים לא ישתנה.</p>
+              )}
             </section>
 
             {/* Colours */}
@@ -272,6 +290,17 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
                       </tr>
                     </thead>
                     <tbody>
+                      <tr className="border-t bg-muted/20">
+                        <td className="px-3 py-2 text-muted-foreground" colSpan={2}>
+                          לא לשנות (להשאיר את הפונט הקיים)
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="radio" name="font-heading" checked={fonts.heading === ''} onChange={() => setFonts((p) => ({ ...p, heading: '' }))} aria-label="לא לשנות פונט כותרות" />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="radio" name="font-body" checked={fonts.body === ''} onChange={() => setFonts((p) => ({ ...p, body: '' }))} aria-label="לא לשנות פונט טקסט" />
+                        </td>
+                      </tr>
                       {analysis.fonts.map((f) => (
                         <tr key={f.family} className="border-t">
                           <td className="px-3 py-2" dir="ltr">
@@ -298,7 +327,7 @@ export function WebsiteImport({ brandId, websiteUrl, hasDescription, disabled }:
                 <input type="checkbox" className="mt-1 size-4 rounded border-input" checked={useDescription} onChange={(e) => setUseDescription(e.target.checked)} />
                 <span>
                   עדכן את תיאור המותג מה-meta description של האתר:
-                  <span className="block text-muted-foreground">&quot;{analysis.description}&quot;</span>
+                  <span className="block text-muted-foreground">&quot;{analysis.description.slice(0, 2000)}&quot;</span>
                 </span>
               </label>
             ) : null}

@@ -9,7 +9,8 @@ import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/fo
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formKey, formValue, idleState } from '@/lib/action-state';
+import type { ActionState } from '@/lib/action-state';
 import { updateBrandAudienceAction } from '../actions';
 
 interface Audience {
@@ -36,7 +37,7 @@ export function BrandAudienceForm({ brandId, settings, disabled }: { brandId: st
     setAudiences((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
 
   return (
-    <form action={action} className="flex flex-col gap-6">
+    <form key={formKey(state)} action={action} className="flex flex-col gap-6">
       <input type="hidden" name="audiencesJson" value={JSON.stringify(audiences.filter((a) => a.name.trim()))} />
       <fieldset disabled={disabled} className="contents">
         <Card>
@@ -72,27 +73,27 @@ export function BrandAudienceForm({ brandId, settings, disabled }: { brandId: st
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field label="קול המותג" name="tone_voice" error={fieldError(state, 'tone.voice')} className="sm:col-span-2">
-              <Textarea id="tone_voice" name="tone_voice" rows={2} defaultValue={tone.voice ?? ''} />
+              <Textarea id="tone_voice" name="tone_voice" rows={2} defaultValue={formValue(state, 'tone_voice', tone.voice)} />
             </Field>
             <Field label="סגנון כתיבה" name="tone_style" error={fieldError(state, 'tone.style')} className="sm:col-span-2">
-              <Textarea id="tone_style" name="tone_style" rows={2} defaultValue={tone.style ?? ''} />
+              <Textarea id="tone_style" name="tone_style" rows={2} defaultValue={formValue(state, 'tone_style', tone.style)} />
             </Field>
             <Field label="שפה" name="tone_language" error={fieldError(state, 'tone.language')}>
-              <Input id="tone_language" name="tone_language" defaultValue={tone.language ?? 'he-IL'} dir="ltr" />
+              <Input id="tone_language" name="tone_language" defaultValue={formValue(state, 'tone_language', tone.language ?? 'he-IL')} dir="ltr" />
             </Field>
             <Field label="מצב פרסום" name="publishingMode" error={fieldError(state, 'publishingMode')}>
-              <Select id="publishingMode" name="publishingMode" defaultValue={settings.publishingMode}>
+              <Select id="publishingMode" name="publishingMode" defaultValue={formValue(state, 'publishingMode', settings.publishingMode)}>
                 <option value="MANUAL">ידני — כל פוסט מחייב אישור</option>
                 <option value="SEMI_AUTO">חצי-אוטומטי — אישור לוח חודשי (ברירת מחדל)</option>
                 <option value="AUTO">אוטומטי — לפי מדיניות מאושרת</option>
               </Select>
             </Field>
-            <ListField label="אסור (Do nots)" name="tone_doNots" values={tone.doNots ?? []} />
-            <ListField label="טענות שיווקיות מותרות" name="allowedClaims" values={settings.allowedClaims} />
-            <ListField label="טענות אסורות" name="forbiddenClaims" values={settings.forbiddenClaims} />
-            <ListField label="מילות מפתח" name="keywords" values={settings.keywords} />
-            <ListField label="Hashtags" name="hashtags" values={settings.hashtags} dir="ltr" />
-            <ListField label="קריאות לפעולה (CTA)" name="ctaPresets" values={settings.ctaPresets} />
+            <ListField label="אסור (Do nots)" name="tone_doNots" values={tone.doNots ?? []} state={state} />
+            <ListField label="טענות שיווקיות מותרות" name="allowedClaims" values={settings.allowedClaims} state={state} />
+            <ListField label="טענות אסורות" name="forbiddenClaims" values={settings.forbiddenClaims} state={state} />
+            <ListField label="מילות מפתח" name="keywords" values={settings.keywords} state={state} />
+            <ListField label="Hashtags" name="hashtags" values={settings.hashtags} dir="ltr" state={state} />
+            <ListField label="קריאות לפעולה (CTA)" name="ctaPresets" values={settings.ctaPresets} state={state} />
           </CardContent>
         </Card>
 
@@ -103,12 +104,12 @@ export function BrandAudienceForm({ brandId, settings, disabled }: { brandId: st
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {TARGETS.map((t) => (
-              <Field key={t.key} label={t.label} name={`target_${t.key}`}>
-                <Input id={`target_${t.key}`} name={`target_${t.key}`} type="number" min={0} max={500} defaultValue={targets[t.key] ?? ''} />
+              <Field key={t.key} label={t.label} name={`target_${t.key}`} error={fieldError(state, `contentTargets.${t.key}`)}>
+                <Input id={`target_${t.key}`} name={`target_${t.key}`} type="number" min={0} max={500} defaultValue={formValue(state, `target_${t.key}`, targets[t.key])} />
               </Field>
             ))}
             <Field label="תקציב פרסום חודשי (₪)" name="monthlyAdBudgetIls" error={fieldError(state, 'monthlyAdBudgetIls')}>
-              <Input id="monthlyAdBudgetIls" name="monthlyAdBudgetIls" type="number" min={0} step={50} defaultValue={settings.monthlyAdBudgetIls ?? ''} />
+              <Input id="monthlyAdBudgetIls" name="monthlyAdBudgetIls" type="number" min={0} step={50} defaultValue={formValue(state, 'monthlyAdBudgetIls', settings.monthlyAdBudgetIls)} />
             </Field>
           </CardContent>
         </Card>
@@ -119,10 +120,10 @@ export function BrandAudienceForm({ brandId, settings, disabled }: { brandId: st
   );
 }
 
-function ListField({ label, name, values, dir }: { label: string; name: string; values: string[]; dir?: 'ltr' | 'rtl' }) {
+function ListField({ label, name, values, dir, state }: { label: string; name: string; values: string[]; dir?: 'ltr' | 'rtl'; state: ActionState }) {
   return (
-    <Field label={label} name={name} hint="פריט אחד בכל שורה">
-      <Textarea id={name} name={name} rows={4} defaultValue={values.join('\n')} dir={dir} />
+    <Field label={label} name={name} hint="פריט אחד בכל שורה" error={fieldError(state, name)}>
+      <Textarea id={name} name={name} rows={4} defaultValue={formValue(state, name, values.join('\n'))} dir={dir} />
     </Field>
   );
 }

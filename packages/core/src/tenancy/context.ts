@@ -62,9 +62,15 @@ export async function listAccessibleBrands(actor: Actor): Promise<BrandSummary[]
   }
   const memberships = await db.membership.findMany({ where: { userId: actor.userId } });
   const adminOrgIds = memberships.filter((m) => isOrgAdmin(m.role)).map((m) => m.orgId);
+  const memberOrgIds = memberships.map((m) => m.orgId);
+  // Explicit grants only count while the user is still a member of the brand's org —
+  // the same rule resolveBrandContext enforces, so the list never shows a brand it would refuse.
   return db.brand.findMany({
     where: {
-      OR: [{ orgId: { in: adminOrgIds } }, { access: { some: { userId: actor.userId } } }],
+      OR: [
+        { orgId: { in: adminOrgIds } },
+        { orgId: { in: memberOrgIds }, access: { some: { userId: actor.userId } } },
+      ],
     },
     select,
     orderBy: [{ status: 'asc' }, { name: 'asc' }],

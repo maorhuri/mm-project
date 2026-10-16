@@ -10,20 +10,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { idleState } from '@/lib/action-state';
+import { formKey, formValue, idleState } from '@/lib/action-state';
 import { createCompetitorAction, deleteCompetitorAction } from '../actions';
 
 export function CompetitorsPanel({ brandId, competitors, canEdit }: { brandId: string; competitors: BrandCompetitor[]; canEdit: boolean }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [state, action] = useActionState(createCompetitorAction.bind(null, brandId), idleState);
-
-  useEffect(() => {
-    if (state.status === 'success') {
-      toast.success(state.message);
-      setOpen(false);
-    }
-  }, [state]);
 
   const remove = (c: BrandCompetitor) => {
     if (!confirm(`להסיר את "${c.name}"?`)) return;
@@ -69,29 +61,43 @@ export function CompetitorsPanel({ brandId, competitors, canEdit }: { brandId: s
         </ul>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>הוספת מתחרה</DialogTitle>
-            <DialogDescription>שם, אתר והערות.</DialogDescription>
-          </DialogHeader>
-          <form action={action} className="flex flex-col gap-4">
-            <Field label="שם" name="name" error={fieldError(state, 'name')}>
-              <Input id="name" name="name" required autoFocus />
-            </Field>
-            <Field label="אתר" name="websiteUrl" error={fieldError(state, 'websiteUrl')}>
-              <Input id="websiteUrl" name="websiteUrl" type="url" dir="ltr" />
-            </Field>
-            <Field label="הערות" name="notes" error={fieldError(state, 'notes')}>
-              <Textarea id="notes" name="notes" rows={3} />
-            </Field>
-            <FormMessage state={state} />
-            <DialogFooter>
-              <SubmitButton pendingText="שומר…">הוספה</SubmitButton>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {open ? <CompetitorDialog brandId={brandId} onClose={() => setOpen(false)} /> : null}
     </div>
+  );
+}
+
+function CompetitorDialog({ brandId, onClose }: { brandId: string; onClose: () => void }) {
+  const [state, action] = useActionState(createCompetitorAction.bind(null, brandId), idleState);
+  useEffect(() => {
+    if (state.status === 'success') {
+      toast.success(state.message);
+      onClose();
+    }
+  }, [state, onClose]);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>הוספת מתחרה</DialogTitle>
+          <DialogDescription>שם, אתר והערות.</DialogDescription>
+        </DialogHeader>
+        <form key={formKey(state)} action={action} className="flex flex-col gap-4">
+          <Field label="שם" name="name" error={fieldError(state, 'name')}>
+            <Input id="name" name="name" defaultValue={formValue(state, 'name', '')} required autoFocus />
+          </Field>
+          <Field label="אתר" name="websiteUrl" error={fieldError(state, 'websiteUrl')}>
+            <Input id="websiteUrl" name="websiteUrl" type="url" dir="ltr" defaultValue={formValue(state, 'websiteUrl', '')} />
+          </Field>
+          <Field label="הערות" name="notes" error={fieldError(state, 'notes')}>
+            <Textarea id="notes" name="notes" rows={3} defaultValue={formValue(state, 'notes', '')} />
+          </Field>
+          <FormMessage state={state} />
+          <DialogFooter>
+            <SubmitButton pendingText="שומר…">הוספה</SubmitButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

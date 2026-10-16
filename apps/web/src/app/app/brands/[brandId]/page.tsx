@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { getBrandKit, isAppError, listKnowledge, listMedia } from '@mm/core';
+import { getBrandKit, isAppError, isOrgAdmin, listKnowledge, listMedia } from '@mm/core';
 import type { BrandContext } from '@mm/core';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BrandStatusBadge } from '@/components/status-badges';
 import { brandContextFor } from '@/lib/brand';
 import { BrandAudienceForm } from './brand-audience-form';
+import { BrandDangerZone } from './brand-danger-zone';
 import { BrandDesignForm } from './brand-design-form';
 import { BrandIdentityForm } from './brand-identity-form';
 import { CompetitorsPanel } from './competitors-panel';
@@ -61,6 +62,7 @@ export default async function BrandKitPage({
   ]);
   const isAdmin = ctx.brandRole === 'BRAND_ADMIN';
   const canEdit = ctx.brandRole !== 'VIEWER';
+  const canDelete = ctx.actor.isSuperAdmin || isOrgAdmin(ctx.orgRole);
 
   return (
     <>
@@ -96,17 +98,21 @@ export default async function BrandKitPage({
 
         <TabsContent value="identity" className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <BrandIdentityForm brand={kit.brand} disabled={!isAdmin} />
-          <LogoPicker brandId={brandId} assets={kit.assets} images={images.items} disabled={!isAdmin} />
+          <div className="flex flex-col gap-6">
+            <LogoPicker brandId={brandId} assets={kit.assets} images={images.items} disabled={!isAdmin} />
+            {canDelete ? <BrandDangerZone brandId={brandId} slug={kit.brand.slug} name={kit.brand.name} /> : null}
+          </div>
         </TabsContent>
 
-        <TabsContent value="design" className="flex flex-col gap-6">
+        {/* forceMount keeps a finished website analysis alive while the user looks at other tabs. */}
+        <TabsContent value="design" forceMount className="flex flex-col gap-6 data-[state=inactive]:hidden">
           <WebsiteImport
             brandId={brandId}
             websiteUrl={kit.brand.websiteUrl}
             hasDescription={Boolean(kit.brand.description)}
             disabled={!isAdmin}
           />
-          <BrandDesignForm brandId={brandId} settings={kit.settings} disabled={!isAdmin} />
+          <BrandDesignForm brandId={brandId} settings={kit.settings} settingsVersion={kit.settings.updatedAt.toISOString()} disabled={!isAdmin} />
         </TabsContent>
 
         <TabsContent value="audience">
