@@ -5,6 +5,7 @@ import {
   Bot,
   CalendarDays,
   Clapperboard,
+  Cpu,
   Images,
   LayoutDashboard,
   Lightbulb,
@@ -34,9 +35,9 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: '/app', label: 'סקירה', icon: LayoutDashboard },
   { href: '/app/brands', label: 'מותגים', icon: Palette },
-  { href: '/app/modules/strategy', label: 'אסטרטגיית AI', icon: Sparkles, phase: 2, module: 'strategy' },
-  { href: '/app/modules/creative', label: 'סטודיו קריאייטיב', icon: Lightbulb, phase: 2, module: 'creative' },
-  { href: '/app/modules/video', label: 'סטודיו וידאו', icon: Clapperboard, phase: 3, module: 'video' },
+  { href: '/app/strategy', label: 'אסטרטגיית AI', icon: Sparkles },
+  { href: '/app/creative', label: 'סטודיו קריאייטיב', icon: Lightbulb },
+  { href: '/app/video', label: 'סטודיו וידאו', icon: Clapperboard },
   { href: '/app/media', label: 'ספריית מדיה', icon: Images },
   { href: '/app/modules/calendar', label: 'לוח תוכן', icon: CalendarDays, phase: 4, module: 'calendar' },
   { href: '/app/modules/social-accounts', label: 'חשבונות סושיאל', icon: Share2, phase: 4, module: 'social-accounts' },
@@ -48,6 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/app/modules/automations', label: 'אוטומציות', icon: Workflow, phase: 4, module: 'automations' },
   { href: '/app/approvals', label: 'מרכז אישורים', icon: BadgeCheck },
   { href: '/app/modules/budget', label: 'מרכז תקציב', icon: Wallet, phase: 5, module: 'budget' },
+  { href: '/app/ai', label: 'מנוע AI ועלויות', icon: Cpu },
   { href: '/app/integrations', label: 'אינטגרציות', icon: Plug },
   { href: '/app/settings', label: 'הגדרות', icon: Settings },
 ];
@@ -62,27 +64,6 @@ export interface ModuleInfo {
 
 /** Honest status for modules not yet built (no fake screens, no demo numbers). */
 export const MODULES: Record<string, ModuleInfo> = {
-  strategy: {
-    key: 'strategy',
-    title: 'אסטרטגיית AI',
-    phase: 2,
-    summary: 'סוכן שיווק מרכזי לכל מותג: יעדים, קהלים, מתחרים, מילות מפתח, תכנון תוכן וקמפיינים.',
-    deliverables: ['AI Router רב-ספקי', 'ניהול עלויות AI', 'המלצות עם מקור נתונים ורמת ביטחון'],
-  },
-  creative: {
-    key: 'creative',
-    title: 'סטודיו קריאייטיב',
-    phase: 2,
-    summary: 'פוסטים, קרוסלות, באנרים ו-Stories ממותגים עם שכבות טיפוגרפיה עבריות הניתנות לעריכה.',
-    deliverables: ['יצירת טקסטים ותמונות', 'תבניות מיתוג', 'עורך Drag & Drop', 'גרסאות וייצוא'],
-  },
-  video: {
-    key: 'video',
-    title: 'סטודיו וידאו',
-    phase: 3,
-    summary: 'תסריט → Storyboard → קליפים → קריינות וכתוביות בעברית → הרכבה עם Remotion/FFmpeg.',
-    deliverables: ['תקציב ותמחור לפני רינדור', 'תורי רינדור', 'Preview ואישור', 'MP4 בכמה יחסי מסך'],
-  },
   calendar: {
     key: 'calendar',
     title: 'לוח תוכן',

@@ -15,9 +15,21 @@ import {
   getQueue,
   getRedisConnection,
   logger,
+  renderCreativeVersion,
+  renderVideoProject,
   startJobRecord,
+  systemBrandContext,
 } from '@mm/core';
 import type { QueueName } from '@mm/core';
+import { closeBrowser, encodeVariants, isChromiumAvailable, renderHtml } from '@mm/core/render';
+
+const renderBackend = { renderHtml, encodeVariants };
+
+function jobString(data: Record<string, unknown>, key: string): string {
+  const v = data[key];
+  if (typeof v !== 'string' || !v) throw new Error(`job payload is missing "${key}"`);
+  return v;
+}
 
 type Processor = (job: Job) => Promise<unknown>;
 
@@ -42,13 +54,35 @@ const systemProcessors: Record<string, Processor> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Phase 2/3 — Chromium renders of creatives, video assembly
+// ---------------------------------------------------------------------------
+
+const contentProcessors: Record<string, Processor> = {
+  [JOBS.creativeRender]: async (job) => {
+    const data = (job.data ?? {}) as Record<string, unknown>;
+    const ctx = await systemBrandContext(jobString(data, 'brandId'), typeof data.actorUserId === 'string' ? data.actorUserId : null);
+    const version = await renderCreativeVersion(ctx, jobString(data, 'versionId'), renderBackend);
+    return { versionId: version.id, renderStatus: version.renderStatus, png: version.renderedPngId };
+  },
+};
+
+const videoProcessors: Record<string, Processor> = {
+  [JOBS.videoRender]: async (job) => {
+    const data = (job.data ?? {}) as Record<string, unknown>;
+    const ctx = await systemBrandContext(jobString(data, 'brandId'), typeof data.actorUserId === 'string' ? data.actorUserId : null);
+    const project = await renderVideoProject(ctx, jobString(data, 'projectId'), renderBackend);
+    return { projectId: project.id, status: project.status, durationMs: project.durationMs, outputMediaId: project.outputMediaId };
+  },
+};
+
 const processors: Record<QueueName, Record<string, Processor>> = {
   system: systemProcessors,
   media: {},
-  content: {},
+  content: contentProcessors,
   publishing: {},
   ads: {},
-  video: {},
+  video: videoProcessors,
   ai: {},
 };
 
@@ -111,6 +145,8 @@ async function main(): Promise<void> {
   logger.info({ env: cfg.NODE_ENV, queues: Object.values(QUEUES) }, 'worker starting');
 
   await db.$queryRaw`SELECT 1`;
+  // Render smoke: report (never block) whether Chromium can launch on this host.
+  void isChromiumAvailable().then((ok) => logger.info({ chromium: ok }, ok ? 'render smoke OK' : 'render smoke FAILED — creative/video renders will fail until Chromium is installed'));
   const workers = (Object.values(QUEUES) as QueueName[]).map(makeWorker);
   await scheduleRecurringJobs();
   logger.info('worker ready');
@@ -121,6 +157,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, 'worker shutting down');
     await Promise.all(workers.map((w) => w.close()));
+    await closeBrowser();
     await closeQueues();
     await db.$disconnect();
     process.exit(0);

@@ -12,7 +12,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getConfig } from '../config';
-import type { ObjectStorage, StoredObject } from './types';
+import type { ByteRange, ObjectStorage, StoredObject } from './types';
 
 export class S3Storage implements ObjectStorage {
   readonly driver = 's3' as const;
@@ -64,14 +64,18 @@ export class S3Storage implements ObjectStorage {
     );
   }
 
-  async get(key: string): Promise<StoredObject | null> {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
     try {
-      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      const res = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key, ...(range ? { Range: `bytes=${range.start}-${range.end ?? ''}` } : {}) }),
+      );
       if (!res.Body) return null;
+      const m = range ? /bytes (\d+)-(\d+)\/(\d+)/.exec(res.ContentRange ?? '') : null;
       return {
         body: res.Body as Readable,
         contentType: res.ContentType ?? 'application/octet-stream',
         contentLength: res.ContentLength,
+        ...(m ? { range: { start: Number(m[1]), end: Number(m[2]), total: Number(m[3]) } } : {}),
       };
     } catch (err) {
       if ((err as { name?: string }).name === 'NoSuchKey') return null;

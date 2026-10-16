@@ -259,3 +259,106 @@ export function slugify(input: string, fallbackPrefix = 'item'): string {
   if (ascii.length >= 2) return ascii.slice(0, 64);
   return `${fallbackPrefix}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Creative Studio, strategy briefs; Phase 3 — Video Studio
+// ---------------------------------------------------------------------------
+import { aspectRatioSchema } from './creative/document';
+export const creativeChannelSchema = z.enum(['FACEBOOK', 'INSTAGRAM', 'GOOGLE', 'LINKEDIN', 'GENERIC']);
+export const creativeFormatSchema = z.enum(['POST', 'STORY', 'BANNER', 'AD']);
+export const creativeTemplateSchema = z.enum(['bold', 'photo', 'clean']);
+
+const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
+
+export const creativeProjectSchema = z.object({
+  title: z.string().trim().min(2, 'כותרת קצרה מדי').max(120),
+  channel: creativeChannelSchema.default('GENERIC'),
+  format: creativeFormatSchema.default('POST'),
+  aspect: aspectRatioSchema.default('R1X1'),
+  productId: z.string().uuid().nullable().optional(),
+  goal: optionalText(500),
+  audience: optionalText(300),
+  style: optionalText(300),
+});
+
+export const ideaRequestSchema = z.object({
+  projectId: z.string().uuid().optional(),
+  productId: z.string().uuid().nullable().optional(),
+  count: z.coerce.number().int().min(1).max(8).default(4),
+  goal: optionalText(500),
+  audience: optionalText(300),
+  extra: optionalText(1000),
+});
+
+export const creativeCopySchema = z.object({
+  headline: z.string().trim().min(1, 'חובה כותרת').max(120),
+  subheadline: optionalText(200),
+  body: optionalText(400),
+  cta: optionalText(40),
+  price: optionalText(40),
+  badge: optionalText(30),
+});
+
+export const composeCreativeSchema = z.object({
+  ideaId: z.string().uuid().optional(),
+  template: creativeTemplateSchema.default('bold'),
+  backgroundMediaId: z.string().uuid().nullable().optional(),
+  copy: creativeCopySchema,
+  note: optionalText(300),
+});
+
+export const backgroundRequestSchema = z.object({
+  prompt: z.string().trim().min(3, 'תיאור קצר מדי').max(1500),
+  quality: z.enum(['low', 'medium', 'high']).default('medium'),
+});
+
+export const saveVersionSchema = z.object({
+  document: z.unknown(),
+  note: optionalText(300),
+});
+
+export const ideaStatusSchema = z.enum(['NEW', 'SELECTED', 'USED', 'DISCARDED']);
+
+export const briefKindSchema = z.enum(['GOALS', 'AUDIENCES', 'CAMPAIGN_PROPOSAL', 'CONTENT_PLAN']);
+export const briefRequestSchema = z.object({
+  kind: briefKindSchema,
+  focus: optionalText(500),
+});
+export const briefStatusSchema = z.enum(['DRAFT', 'ACCEPTED', 'ARCHIVED']);
+
+/** OpenAI text-to-speech voices (platform.openai.com/docs/guides/text-to-speech). */
+export const TTS_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'] as const;
+export const ttsVoiceSchema = z.enum(TTS_VOICES);
+
+export const videoProjectSchema = z.object({
+  title: z.string().trim().min(2, 'כותרת קצרה מדי').max(120),
+  goal: optionalText(500),
+  productId: z.string().uuid().nullable().optional(),
+  aspect: aspectRatioSchema.default('R9X16'),
+  voice: ttsVoiceSchema.default('alloy'),
+});
+
+export const videoScriptRequestSchema = z.object({
+  sceneCount: z.coerce.number().int().min(2).max(8).default(5),
+  targetSeconds: z.coerce.number().int().min(10).max(90).default(30),
+  extra: optionalText(1000),
+});
+
+export const videoSceneUpdateSchema = z.object({
+  narration: z.string().trim().min(1, 'חובה קריינות').max(600),
+  onScreenText: optionalText(120),
+  visualKind: z.enum(['CARD', 'MEDIA', 'AI_IMAGE']).default('CARD'),
+  mediaId: z.string().uuid().nullable().optional(),
+  visualPrompt: optionalText(600),
+});
+
+export type CreativeProjectInput = z.infer<typeof creativeProjectSchema>;
+export type IdeaRequestInput = z.infer<typeof ideaRequestSchema>;
+export type CreativeCopyInput = z.infer<typeof creativeCopySchema>;
+export type ComposeCreativeInput = z.infer<typeof composeCreativeSchema>;
+export type BackgroundRequestInput = z.infer<typeof backgroundRequestSchema>;
+export type SaveVersionInput = z.infer<typeof saveVersionSchema>;
+export type BriefRequestInput = z.infer<typeof briefRequestSchema>;
+export type VideoProjectInput = z.infer<typeof videoProjectSchema>;
+export type VideoScriptRequestInput = z.infer<typeof videoScriptRequestSchema>;
+export type VideoSceneUpdateInput = z.infer<typeof videoSceneUpdateSchema>;

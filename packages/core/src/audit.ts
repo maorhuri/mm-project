@@ -53,7 +53,7 @@ export function auditFromContext(ctx: BrandContext, entry: AuditEntry): Promise<
     {
       orgId: ctx.orgId,
       brandId: ctx.brandId,
-      actorUserId: ctx.actor.userId,
+      actorUserId: ctx.actor.userId || null,
       ipAddress: ctx.request?.ipAddress ?? null,
       userAgent: ctx.request?.userAgent ?? null,
     },

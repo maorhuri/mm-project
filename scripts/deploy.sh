@@ -62,7 +62,14 @@ for _ in $(seq 1 30); do
 done
 
 log "npm ci"
-npm ci --no-audit --no-fund --loglevel=error
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --no-audit --no-fund --loglevel=error
+
+log "playwright chromium (shared browsers dir)"
+BROWSERS=$(grep "^PLAYWRIGHT_BROWSERS_PATH=" .env | cut -d= -f2-)
+BROWSERS=${BROWSERS:-$SHARED/ms-playwright}
+mkdir -p "$BROWSERS"
+PLAYWRIGHT_BROWSERS_PATH="$BROWSERS" npx playwright install chromium >/dev/null 2>&1 || PLAYWRIGHT_BROWSERS_PATH="$BROWSERS" npx playwright install chromium
+chown -R "$APP_USER:$APP_USER" "$BROWSERS"
 
 log "prisma generate + migrate deploy"
 npm run -s db:generate

@@ -166,6 +166,13 @@ model Brand {
   notifications    Notification[]
   providerAccounts ProviderAccount[]
   backgroundJobs   BackgroundJob[]
+  aiRuns           AiRun[]
+  contentIdeas     ContentIdea[]
+  creativeProjects CreativeProject[]
+  creativeVersions CreativeVersion[]
+  strategyBriefs   StrategyBrief[]
+  videoProjects    VideoProject[]
+  videoScenes      VideoScene[]
 
   @@unique([orgId, slug])
   @@index([orgId, status])
@@ -555,4 +562,300 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([brandId, createdAt])
   @@map("notifications")
+}
+
+// ===========================================================================
+// Phase 2 — AI engine (runs ledger), ideas, creatives, strategy briefs
+// ===========================================================================
+
+enum AiTaskType {
+  PROVIDER_PROBE
+  CREATIVE_IDEAS
+  CREATIVE_COPY
+  CREATIVE_BACKGROUND
+  QA_CLAIM_JUDGE
+  STRATEGY_BRIEF
+  VIDEO_SCRIPT
+  TTS
+  OTHER
+}
+
+enum AiRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED
+}
+
+/// Every model call, with its cost in ILS — the AI cost ledger.
+model AiRun {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  brandId       String      @map("brand_id") @db.Uuid
+  task          AiTaskType
+  provider      String
+  modelId       String      @map("model_id")
+  status        AiRunStatus @default(RUNNING)
+  inputTokens   Int?        @map("input_tokens")
+  outputTokens  Int?        @map("output_tokens")
+  images        Int?
+  characters    Int?
+  costIls       Decimal     @default(0) @map("cost_ils") @db.Decimal(12, 4)
+  costUsd       Decimal?    @map("cost_usd") @db.Decimal(12, 6)
+  /// True when the cost is an estimate (provider returned no usage)
+  estimated     Boolean     @default(false)
+  latencyMs     Int?        @map("latency_ms")
+  promptHash    String?     @map("prompt_hash")
+  factsHash     String?     @map("facts_hash")
+  error         String?
+  metadata      Json        @default("{}")
+  requestedById String?     @map("requested_by_id") @db.Uuid
+  approvalId    String?     @map("approval_id") @db.Uuid
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, createdAt])
+  @@index([brandId, status])
+  @@map("ai_runs")
+}
+
+enum IdeaStatus {
+  NEW
+  SELECTED
+  USED
+  DISCARDED
+}
+
+model ContentIdea {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  brandId         String     @map("brand_id") @db.Uuid
+  productId       String?    @map("product_id") @db.Uuid
+  title           String
+  hook            String
+  angle           String?
+  /// English visual direction for the image model (never contains text to render)
+  visualDirection String?    @map("visual_direction")
+  /// { headline, subheadline, body?, cta, price? }
+  copy            Json       @default("{}")
+  /// [{ text, factIds[] }] — every factual statement cites approved fact ids
+  claims          Json       @default("[]")
+  qa              Json?
+  status          IdeaStatus @default(NEW)
+  source          String     @default("ai")
+  aiRunId         String?    @map("ai_run_id") @db.Uuid
+  factsHash       String?    @map("facts_hash")
+  brief           Json       @default("{}")
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, status, createdAt])
+  @@map("content_ideas")
+}
+
+enum CreativeChannel {
+  FACEBOOK
+  INSTAGRAM
+  GOOGLE
+  LINKEDIN
+  GENERIC
+}
+
+enum CreativeFormat {
+  POST
+  STORY
+  BANNER
+  AD
+}
+
+enum AspectRatio {
+  R1X1
+  R4X5
+  R9X16
+  R16X9
+  R191X1
+}
+
+enum CreativeStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum RenderStatus {
+  PENDING
+  RENDERING
+  READY
+  FAILED
+}
+
+enum VersionStatus {
+  DRAFT
+  READY
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+model CreativeProject {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  brandId          String          @map("brand_id") @db.Uuid
+  title            String
+  channel          CreativeChannel @default(GENERIC)
+  format           CreativeFormat  @default(POST)
+  aspect           AspectRatio     @default(R1X1)
+  status           CreativeStatus  @default(DRAFT)
+  productId        String?         @map("product_id") @db.Uuid
+  ideaId           String?         @map("idea_id") @db.Uuid
+  goal             String?
+  audience         String?
+  style            String?
+  currentVersionId String?         @map("current_version_id") @db.Uuid
+  createdById      String?         @map("created_by_id") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  brand    Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  versions CreativeVersion[]
+
+  @@index([brandId, status, updatedAt])
+  @@map("creative_projects")
+}
+
+/// Editable source document (layers) + its renders. Approval binds to a version.
+model CreativeVersion {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  brandId        String        @map("brand_id") @db.Uuid
+  projectId      String        @map("project_id") @db.Uuid
+  version        Int
+  /// CreativeDocument v1 (see packages/core/src/creative/document.ts)
+  document       Json
+  copy           Json          @default("{}")
+  qa             Json?
+  renderStatus   RenderStatus  @default(PENDING) @map("render_status")
+  renderError    String?       @map("render_error")
+  renderWarnings Json?         @map("render_warnings")
+  renderedPngId  String?       @map("rendered_png_id") @db.Uuid
+  renderedJpgId  String?       @map("rendered_jpg_id") @db.Uuid
+  renderedWebpId String?       @map("rendered_webp_id") @db.Uuid
+  status         VersionStatus @default(DRAFT)
+  approvalId     String?       @map("approval_id") @db.Uuid
+  factsHash      String?       @map("facts_hash")
+  note           String?
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  brand   Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project CreativeProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@index([brandId, status])
+  @@map("creative_versions")
+}
+
+enum BriefKind {
+  GOALS
+  AUDIENCES
+  CAMPAIGN_PROPOSAL
+  CONTENT_PLAN
+}
+
+enum BriefStatus {
+  DRAFT
+  ACCEPTED
+  ARCHIVED
+}
+
+/// Strategy agent output: every item carries its data basis (fact ids) and a confidence level.
+model StrategyBrief {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  brandId     String      @map("brand_id") @db.Uuid
+  kind        BriefKind
+  title       String
+  content     Json
+  factsHash   String?     @map("facts_hash")
+  aiRunId     String?     @map("ai_run_id") @db.Uuid
+  status      BriefStatus @default(DRAFT)
+  createdById String?     @map("created_by_id") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, kind, createdAt])
+  @@map("strategy_briefs")
+}
+
+// ===========================================================================
+// Phase 3 — Video studio
+// ===========================================================================
+
+enum VideoStatus {
+  DRAFT
+  SCRIPTED
+  RENDERING
+  READY
+  FAILED
+  APPROVED
+}
+
+enum SceneVisualKind {
+  CARD
+  MEDIA
+  AI_IMAGE
+}
+
+model VideoProject {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  brandId          String      @map("brand_id") @db.Uuid
+  title            String
+  goal             String?
+  productId        String?     @map("product_id") @db.Uuid
+  aspect           AspectRatio @default(R9X16)
+  status           VideoStatus @default(DRAFT)
+  voice            String      @default("alloy")
+  language         String      @default("he")
+  voiceoverMediaId String?     @map("voiceover_media_id") @db.Uuid
+  outputMediaId    String?     @map("output_media_id") @db.Uuid
+  subtitlesSrt     String?     @map("subtitles_srt")
+  durationMs       Int?        @map("duration_ms")
+  costIls          Decimal     @default(0) @map("cost_ils") @db.Decimal(12, 4)
+  renderProgress   Int         @default(0) @map("render_progress")
+  renderStep       String?     @map("render_step")
+  renderError      String?     @map("render_error")
+  qa               Json?
+  approvalId       String?     @map("approval_id") @db.Uuid
+  factsHash        String?     @map("facts_hash")
+  createdById      String?     @map("created_by_id") @db.Uuid
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  brand  Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  scenes VideoScene[]
+
+  @@index([brandId, status, updatedAt])
+  @@map("video_projects")
+}
+
+model VideoScene {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  brandId         String          @map("brand_id") @db.Uuid
+  projectId       String          @map("project_id") @db.Uuid
+  order           Int
+  narration       String
+  onScreenText    String?         @map("on_screen_text")
+  visualKind      SceneVisualKind @default(CARD) @map("visual_kind")
+  mediaId         String?         @map("media_id") @db.Uuid
+  visualPrompt    String?         @map("visual_prompt")
+  renderedImageId String?         @map("rendered_image_id") @db.Uuid
+  audioMediaId    String?         @map("audio_media_id") @db.Uuid
+  durationMs      Int?            @map("duration_ms")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  brand   Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, order])
+  @@map("video_scenes")
 }

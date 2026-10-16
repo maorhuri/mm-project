@@ -5,9 +5,9 @@ import sharp from 'sharp';
 import { auditFromContext } from '../audit';
 import { getConfig } from '../config';
 import { sha256Hex } from '../crypto';
-import { NotFoundError, PayloadTooLargeError, ValidationError } from '../errors';
+import { AppError, NotFoundError, PayloadTooLargeError, ValidationError } from '../errors';
 import { getStorage } from '../storage';
-import type { StoredObject } from '../storage';
+import type { ByteRange, StoredObject } from '../storage';
 import type { BrandContext } from '../tenancy/context';
 import { assertBrandRole } from '../tenancy/context';
 import type { MediaListQuery, MediaUpdateInput } from '../validation';
@@ -181,9 +181,13 @@ export async function getMedia(ctx: BrandContext, mediaId: string): Promise<Medi
 export async function openMediaObject(
   ctx: BrandContext,
   mediaId: string,
+  range?: ByteRange,
 ): Promise<{ asset: MediaAsset; object: StoredObject }> {
   const asset = await getMedia(ctx, mediaId);
-  const object = await getStorage().get(asset.storageKey);
+  if (range && (range.start < 0 || range.start >= asset.sizeBytes || (range.end !== undefined && range.end < range.start))) {
+    throw new AppError(416, 'range_not_satisfiable', 'Requested range not satisfiable');
+  }
+  const object = await getStorage().get(asset.storageKey, range);
   if (!object) throw new NotFoundError('media file');
   return { asset, object: { ...object, contentType: asset.mimeType } };
 }

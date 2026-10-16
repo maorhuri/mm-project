@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   // Workspace packages are TypeScript source; Next compiles them.
   transpilePackages: ['@mm/core', '@mm/db'],
   // Native / server-only modules must not be bundled.
-  serverExternalPackages: ['@prisma/client', '@node-rs/argon2', 'sharp', 'pino', 'bullmq', 'ioredis', 'undici', 'cheerio'],
+  serverExternalPackages: ['@prisma/client', '@node-rs/argon2', 'sharp', 'pino', 'bullmq', 'ioredis', 'undici', 'cheerio', 'playwright', 'openai', '@anthropic-ai/sdk', '@google/genai'],
   // Standalone output is used by docker/web.Dockerfile; `next start` works too.
   output: 'standalone',
   outputFileTracingRoot: path.join(process.cwd(), '../../'),

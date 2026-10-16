@@ -41,6 +41,7 @@ jobs:
       S3_ACCESS_KEY: ci
       S3_SECRET_KEY: ci
       NEXT_TELEMETRY_DISABLED: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

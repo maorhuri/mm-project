@@ -3,7 +3,7 @@ import { MemoryStorage } from './memory';
 import { S3Storage } from './s3';
 import type { ObjectStorage } from './types';
 
-export type { ObjectStorage, StoredObject } from './types';
+export type { ByteRange, ObjectStorage, StoredObject } from './types';
 export { MemoryStorage } from './memory';
 export { S3Storage } from './s3';
 

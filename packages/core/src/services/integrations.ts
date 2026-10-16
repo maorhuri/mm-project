@@ -13,12 +13,9 @@ export interface IntegrationCatalogEntry {
 
 /** Integrations the platform is designed for. Status comes from provider_accounts. */
 export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
-  { provider: 'anthropic', kind: 'AI_TEXT', label: 'Anthropic Claude', phase: 2, scope: 'org' },
-  { provider: 'openai', kind: 'AI_TEXT', label: 'OpenAI GPT', phase: 2, scope: 'org' },
-  { provider: 'google_ai', kind: 'AI_TEXT', label: 'Google Gemini', phase: 2, scope: 'org' },
-  { provider: 'image_gen', kind: 'AI_IMAGE', label: 'Image generation', phase: 2, scope: 'org' },
-  { provider: 'video_gen', kind: 'AI_VIDEO', label: 'Video generation', phase: 3, scope: 'org' },
-  { provider: 'tts', kind: 'AI_TTS', label: 'Text-to-speech (Hebrew)', phase: 3, scope: 'org' },
+  { provider: 'openai', kind: 'AI_TEXT', label: 'OpenAI — טקסט, תמונות וקריינות', phase: 2, scope: 'org' },
+  { provider: 'anthropic', kind: 'AI_TEXT', label: 'Anthropic Claude — טקסט, QA ואסטרטגיה', phase: 2, scope: 'org' },
+  { provider: 'google', kind: 'AI_TEXT', label: 'Google Gemini — טקסט ותמונות', phase: 2, scope: 'org' },
   { provider: 'meta', kind: 'META', label: 'Meta — Facebook Page / Instagram / Ads', phase: 4, scope: 'brand' },
   { provider: 'google_ads', kind: 'GOOGLE_ADS', label: 'Google Ads', phase: 5, scope: 'brand' },
   { provider: 'linkedin', kind: 'LINKEDIN', label: 'LinkedIn Pages', phase: 6, scope: 'brand' },

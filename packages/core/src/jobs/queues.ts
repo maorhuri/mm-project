@@ -17,6 +17,8 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 export const JOBS = {
   heartbeat: 'system.heartbeat',
   cleanupSessions: 'system.cleanup-sessions',
+  creativeRender: 'creative.render',
+  videoRender: 'video.render',
 } as const;
 
 let connection: IORedis | undefined;

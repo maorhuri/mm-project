@@ -121,6 +121,24 @@ export async function resolveBrandContext(
   };
 }
 
+/** Placeholder principal for background jobs that run without a user (audit rows get actor NULL). */
+export const SYSTEM_ACTOR: Actor = { userId: '', email: 'system@mm.local', name: 'המערכת', isSuperAdmin: false };
+
+/**
+ * Context for background jobs: acts as BRAND_ADMIN inside one brand on behalf
+ * of the user who queued the job (when still present), else as the system.
+ */
+export async function systemBrandContext(brandId: string, actorUserId?: string | null): Promise<BrandContext> {
+  const brand = await db.brand.findUnique({
+    where: { id: brandId },
+    select: { id: true, orgId: true, name: true, slug: true, status: true, isDemo: true },
+  });
+  if (!brand) throw new NotFoundError('brand');
+  const user = actorUserId ? await db.user.findUnique({ where: { id: actorUserId } }) : null;
+  const actor: Actor = user ? { userId: user.id, email: user.email, name: user.name, isSuperAdmin: user.isSuperAdmin } : SYSTEM_ACTOR;
+  return { actor, orgId: brand.orgId, brandId, brand, orgRole: null, brandRole: 'BRAND_ADMIN', db: forBrand(brandId) };
+}
+
 /** Org-level role check used by org-scoped operations (create brand, manage members). */
 export async function requireOrgAdmin(actor: Actor, orgId: string): Promise<OrgRole | null> {
   if (actor.isSuperAdmin) return null;

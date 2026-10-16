@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import type { ObjectStorage, StoredObject } from './types';
+import type { ByteRange, ObjectStorage, StoredObject } from './types';
 
 /** In-memory storage for tests only. Clearly not durable. */
 export class MemoryStorage implements ObjectStorage {
@@ -10,9 +10,14 @@ export class MemoryStorage implements ObjectStorage {
     this.objects.set(key, { body: Buffer.from(body), contentType });
   }
 
-  async get(key: string): Promise<StoredObject | null> {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
     const obj = this.objects.get(key);
     if (!obj) return null;
+    if (range) {
+      const end = Math.min(range.end ?? obj.body.length - 1, obj.body.length - 1);
+      const slice = obj.body.subarray(range.start, end + 1);
+      return { body: Readable.from(slice), contentType: obj.contentType, contentLength: slice.length, range: { start: range.start, end, total: obj.body.length } };
+    }
     return { body: Readable.from(obj.body), contentType: obj.contentType, contentLength: obj.body.length };
   }
 

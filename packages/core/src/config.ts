@@ -58,8 +58,17 @@ const schema = z
     MEDIA_PUBLIC_BASE_URL: z.string().optional(),
     MEDIA_MAX_UPLOAD_MB: z.coerce.number().positive().default(200),
 
+    AI_ENABLED: bool(true),
+    /** Allow clearly-labelled mock adapters when no provider key exists (never recommended in production). */
+    AI_ALLOW_MOCK: bool(false),
     AI_MONTHLY_BUDGET_ILS: z.coerce.number().nonnegative().default(500),
     AI_SINGLE_RUN_MAX_ILS: z.coerce.number().nonnegative().default(25),
+    USD_ILS_RATE: z.coerce.number().positive().default(3.7),
+    /** Chromium render cap (2160×2160 ≈ 4.7 MP). */
+    RENDER_MAX_PIXELS: z.coerce.number().int().positive().default(4_700_000),
+    PLAYWRIGHT_BROWSERS_PATH: z.string().optional(),
+    /** Override for the bundled Hebrew fonts directory (defaults resolve packages/core/assets/fonts). */
+    MM_FONTS_DIR: z.string().optional(),
     META_ADS_WRITE_ENABLED: bool(false),
     GOOGLE_ADS_WRITE_ENABLED: bool(false),
     /** When true, super admins and org OWNER/ADMIN users must enrol in MFA before using the app. */

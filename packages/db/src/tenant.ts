@@ -20,6 +20,13 @@ export const TENANT_MODELS = new Set([
   'Notification',
   'BackgroundJob',
   'ProviderAccount',
+  'AiRun',
+  'ContentIdea',
+  'CreativeProject',
+  'CreativeVersion',
+  'StrategyBrief',
+  'VideoProject',
+  'VideoScene',
 ]);
 
 /** The Brand model itself is scoped by its primary key rather than a brand_id column. */

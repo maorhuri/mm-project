@@ -1,4 +1,16 @@
-import type { ApprovalStatus, ApprovalType, BrandStatus, ConnectionStatus, JobStatus, KnowledgeStatus } from '@mm/db';
+import type {
+  ApprovalStatus,
+  ApprovalType,
+  BrandStatus,
+  ConnectionStatus,
+  CreativeStatus,
+  IdeaStatus,
+  JobStatus,
+  KnowledgeStatus,
+  RenderStatus,
+  VersionStatus,
+  VideoStatus,
+} from '@mm/db';
 import { Badge } from '@/components/ui/badge';
 
 export function BrandStatusBadge({ status }: { status: BrandStatus }) {
@@ -68,5 +80,91 @@ export function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
     REJECTED: { label: 'נדחה', variant: 'destructive' },
   };
   const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2/3 — creatives, versions, renders, videos, QA
+// ---------------------------------------------------------------------------
+
+export function CreativeStatusBadge({ status }: { status: CreativeStatus }) {
+  const map: Record<CreativeStatus, { label: string; variant: 'success' | 'muted' | 'destructive' | 'warning' | 'secondary' }> = {
+    DRAFT: { label: 'טיוטה', variant: 'muted' },
+    IN_REVIEW: { label: 'ממתין לאישור', variant: 'warning' },
+    APPROVED: { label: 'אושר', variant: 'success' },
+    REJECTED: { label: 'נדחה', variant: 'destructive' },
+    ARCHIVED: { label: 'בארכיון', variant: 'secondary' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export function VersionStatusBadge({ status }: { status: VersionStatus }) {
+  const map: Record<VersionStatus, { label: string; variant: 'success' | 'muted' | 'destructive' | 'secondary' | 'default' }> = {
+    DRAFT: { label: 'טיוטה', variant: 'muted' },
+    READY: { label: 'מוכן', variant: 'default' },
+    APPROVED: { label: 'אושר', variant: 'success' },
+    REJECTED: { label: 'נדחה', variant: 'destructive' },
+    SUPERSEDED: { label: 'הוחלף', variant: 'secondary' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export function RenderStatusBadge({ status }: { status: RenderStatus }) {
+  const map: Record<RenderStatus, { label: string; variant: 'success' | 'muted' | 'destructive' | 'warning' }> = {
+    PENDING: { label: 'בתור לרינדור', variant: 'muted' },
+    RENDERING: { label: 'מרנדר…', variant: 'warning' },
+    READY: { label: 'רונדר', variant: 'success' },
+    FAILED: { label: 'רינדור נכשל', variant: 'destructive' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export function VideoStatusBadge({ status }: { status: VideoStatus }) {
+  const map: Record<VideoStatus, { label: string; variant: 'success' | 'muted' | 'destructive' | 'warning' | 'default' }> = {
+    DRAFT: { label: 'טיוטה', variant: 'muted' },
+    SCRIPTED: { label: 'יש תסריט', variant: 'default' },
+    RENDERING: { label: 'מרנדר…', variant: 'warning' },
+    READY: { label: 'מוכן לצפייה', variant: 'success' },
+    FAILED: { label: 'נכשל', variant: 'destructive' },
+    APPROVED: { label: 'אושר', variant: 'success' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export function IdeaStatusBadge({ status }: { status: IdeaStatus }) {
+  const map: Record<IdeaStatus, { label: string; variant: 'success' | 'muted' | 'secondary' | 'default' }> = {
+    NEW: { label: 'חדש', variant: 'default' },
+    SELECTED: { label: 'נבחר', variant: 'success' },
+    USED: { label: 'בשימוש', variant: 'secondary' },
+    DISCARDED: { label: 'נפסל', variant: 'muted' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export type QaStatus = 'PASSED' | 'WARN' | 'BLOCKED';
+
+export function QaStatusBadge({ status }: { status: QaStatus | null | undefined }) {
+  if (!status) return <Badge variant="muted">ללא QA</Badge>;
+  const map: Record<QaStatus, { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
+    PASSED: { label: 'QA עבר', variant: 'success' },
+    WARN: { label: 'QA: אזהרות', variant: 'warning' },
+    BLOCKED: { label: 'QA חסם', variant: 'destructive' },
+  };
+  const m = map[status];
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+export function ConfidenceBadge({ level }: { level: 'HIGH' | 'MEDIUM' | 'LOW' }) {
+  const map = {
+    HIGH: { label: 'ביטחון גבוה', variant: 'success' as const },
+    MEDIUM: { label: 'ביטחון בינוני', variant: 'warning' as const },
+    LOW: { label: 'ביטחון נמוך', variant: 'muted' as const },
+  };
+  const m = map[level];
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
