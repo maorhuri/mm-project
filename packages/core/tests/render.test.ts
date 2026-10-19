@@ -109,8 +109,8 @@ describe.skipIf(!enabled)('motion video pipeline (Chromium + FFmpeg, mock clip p
       expect(info.width).toBe(1080);
       expect(info.height).toBe(1920);
       const after = await db.videoScene.findMany({ where: { projectId: project.id }, orderBy: { order: 'asc' } });
-      // Scenes overlap by the 350 ms cross-fade.
-      const total = after.reduce((n, s) => n + (s.durationMs ?? 0), 0) - (after.length - 1) * 350;
+      // Scenes overlap by the 250 ms cross-fade.
+      const total = after.reduce((n, s) => n + (s.durationMs ?? 0), 0) - (after.length - 1) * 250;
       expect(Math.abs(info.durationMs - total)).toBeLessThan(300);
       expect(after[1]!.clipMediaId).toBeTruthy(); // avatar clip stored
       expect(after.find((s) => s.id === third.id)!.clipMediaId).toBeTruthy(); // AI clip stored

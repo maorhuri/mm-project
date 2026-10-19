@@ -149,7 +149,7 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
               </Select>
             </Field>
           ) : null}
-          <Field label="קריין" name="voice" error={fieldError(state, 'voice')}>
+          <Field label={characterId ? "קריין (בסרטון עם דמות — קול הדמות)" : "קריין"} name="voice" error={fieldError(state, 'voice')}>
             <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', 'onyx')}>
               {VOICES.map((v) => (
                 <option key={v.id} value={v.id}>

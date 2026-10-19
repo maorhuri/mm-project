@@ -210,8 +210,9 @@ describe('motion composition (pure)', () => {
     expect(ttsCacheKey('שלום', 'alloy', 'x')).toBe(ttsCacheKey('שלום', 'alloy', 'x'));
     expect(ttsCacheKey('שלום', 'nova', 'x')).not.toBe(ttsCacheKey('שלום', 'alloy', 'x'));
     const character = { id: 'c', brandId: 'b', name: 'רובי', description: 'blue robot', imageMediaId: 'img', voice: 'nova', voiceInstructions: 'cheerful', isActive: true, createdById: null, createdAt: new Date(), updatedAt: new Date() };
-    expect(narrationVoice(project, { visualKind: 'AVATAR' }, character)).toEqual({ voice: 'nova', instructions: 'cheerful' });
-    expect(narrationVoice(project, { visualKind: 'AI_VIDEO' }, character).voice).toBe('alloy');
+    expect(narrationVoice(project, { visualKind: 'AVATAR' }, character).voice).toBe('nova');
+    expect(narrationVoice(project, { visualKind: 'AI_VIDEO' }, character).voice).toBe('nova');
+    expect(narrationVoice(project, { visualKind: 'CARD' }, null).voice).toBe('alloy');
     const h1 = renderConfigHash(project, [{ ...scene, id: 's1' }]);
     expect(renderConfigHash(project, [{ ...scene, id: 's1', onScreenText: 'x' }])).toBe(h1);
     expect(renderConfigHash(project, [{ ...scene, id: 's1', narration: 'אחר' }])).not.toBe(h1);

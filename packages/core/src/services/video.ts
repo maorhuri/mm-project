@@ -34,7 +34,7 @@ import type { ComposeKit } from '../creative/templates';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { JOBS, QUEUES, getQueue } from '../jobs/queues';
 import { logger } from '../logger';
-import { assembleVideo, composeScene, effectiveDurations, extractFrame, ffprobeDurationMs, probeMedia } from '../media/ffmpeg';
+import { assembleVideo, composeScene, effectiveDurations, extractFrame, ffmpeg, ffprobeDurationMs, probeMedia } from '../media/ffmpeg';
 import type { SceneBackground, StillMotion } from '../media/ffmpeg';
 import type { BrandContext } from '../tenancy/context';
 import { assertBrandRole } from '../tenancy/context';
@@ -66,10 +66,10 @@ export const SCENE_KIND_LABELS: Record<SceneVisualKind, string> = {
 /** Hebrew narration pace used for estimates before the audio exists. */
 const CHARS_PER_SECOND = 14;
 /** Silence after each scene's narration. */
-const SCENE_TAIL_MS = 500;
-const DEFAULT_NARRATOR = 'Warm, clear Hebrew narrator for a short marketing video. Natural pace.';
+const SCENE_TAIL_MS = 150;
+const DEFAULT_NARRATOR = 'Native Israeli Hebrew voice-over for an Instagram Reel: energetic, confident and warm, brisk conversational pace, no pauses between sentences, like a real person talking.';
 /** Cross-fade between scenes. */
-const TRANSITION_MS = 350;
+const TRANSITION_MS = 250;
 const CLIP_NEGATIVE = 'on-screen text, captions, subtitles, letters, words, logos, watermark, distorted faces, extra fingers, blurry';
 
 // ---------------------------------------------------------------------------
@@ -184,8 +184,8 @@ type ProjectLike = Pick<VideoProject, 'aspect' | 'voice' | 'videoTier' | 'ambien
 type SceneLike = Pick<VideoScene, 'narration' | 'visualKind' | 'visualPrompt' | 'motionPrompt' | 'mediaId' | 'characterId' | 'onScreenText'>;
 
 export function narrationVoice(project: Pick<VideoProject, 'voice'>, scene: Pick<VideoScene, 'visualKind'>, character: BrandCharacter | null): { voice: string; instructions: string } {
-  // A speaking character always uses its own voice; other scenes use the project narrator.
-  if (character && scene.visualKind === 'AVATAR') return { voice: character.voice, instructions: character.voiceInstructions ?? DEFAULT_NARRATOR };
+  // Wherever the brand character appears, the narration is in its voice (one consistent voice per video).
+  if (character) return { voice: character.voice, instructions: character.voiceInstructions ? `${character.voiceInstructions}. Brisk natural pace, no long pauses.` : DEFAULT_NARRATOR };
   return { voice: project.voice, instructions: DEFAULT_NARRATOR };
 }
 
@@ -664,6 +664,12 @@ export function subtitleStyle(aspect: VideoProject['aspect']): string {
 
 export type VideoRenderBackend = RenderBackend;
 
+/** Trim leading/trailing silence and speed the delivery up 7 % (pitch preserved). */
+async function tightenNarration(input: string, output: string): Promise<void> {
+  const trim = 'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05';
+  await ffmpeg(['-i', input, '-af', `${trim},areverse,${trim},areverse,atempo=1.07`, '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', output], 120_000);
+}
+
 class RenderCancelledError extends Error {
   constructor() {
     super('render cancelled');
@@ -834,6 +840,16 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         audioMediaId = asset.id;
         cache.ttsKey = tKey;
       }
+      // Natural flow between scenes: cut the TTS lead-in / tail silences and tighten the pace slightly.
+      const rawAudio = audioFile;
+      const tight = path.join(dir, `scene-${scene.order}-tight.m4a`);
+      try {
+        await tightenNarration(rawAudio, tight);
+        // Guard: a (near-)silent take must not be trimmed away.
+        if ((await probeMedia(tight)).durationMs >= 300) audioFile = tight;
+      } catch (err) {
+        logger.warn({ err, sceneId: scene.id }, 'narration tightening failed — using the raw audio');
+      }
       const audioMs = await ffprobeDurationMs(audioFile);
       const durationMs = audioMs + SCENE_TAIL_MS;
 
@@ -926,7 +942,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
             coveredByApprovalId: coveredBy,
             request: {
               image: { data: face.data, mimeType: face.asset.mimeType },
-              audio: { data: await readFile(audioFile), mimeType: audioFile.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg', durationMs: audioMs },
+              audio: { data: await readFile(audioFile), mimeType: audioFile.endsWith('.wav') ? 'audio/wav' : audioFile.endsWith('.m4a') ? 'audio/mp4' : 'audio/mpeg', durationMs: audioMs },
               prompt: scene.motionPrompt ?? 'Natural, expressive talking presenter; subtle head movement and gestures; steady camera.',
               aspect,
             },
@@ -1088,7 +1104,7 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
   }
   const title = (input.title ?? input.brief.replace(/\s+/g, ' ').trim()).slice(0, 60) || 'סרטון';
   const project = await createVideoProject(ctx, { title, goal: input.brief.slice(0, 500), productId: input.productId ?? null, aspect: input.aspect, voice: (input.voice ?? 'alloy') as VideoProjectInput['voice'] });
-  await ctx.db.videoProject.update({ where: { id: project.id }, data: { videoTier: input.videoTier, motionStills: true, transitions: true } });
+  await ctx.db.videoProject.update({ where: { id: project.id }, data: { videoTier: input.videoTier, motionStills: true, transitions: true, ...(character ? { voice: character.voice } : {}) } });
   const tier = input.videoTier as AiTier;
   const [videoModel, avatarModel] = await Promise.all([resolveClipModel(ctx, 'video', tier), character ? resolveClipModel(ctx, 'avatar', tier) : null]);
   const motion = videoModel ? 'AI_VIDEO' : 'AI_IMAGE';
