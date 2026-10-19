@@ -1058,6 +1058,8 @@ registerApprovalHandler('video_project', async (ctx, approval) => {
 export interface AutoProduceInput {
   /** Stop before rendering so every scene can be reviewed and approved. */
   reviewFirst?: boolean;
+  /** presenter: talks in the opening and the close, appears in the rest · all: in every scene · talking: talks in every scene */
+  characterMode?: 'presenter' | 'all' | 'talking';
   brief: string;
   title?: string;
   aspect: VideoProject['aspect'];
@@ -1093,14 +1095,23 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
   const { scenes } = await generateVideoScript(ctx, project.id, {
     sceneCount: input.sceneCount,
     targetSeconds: input.targetSeconds,
-    extra: [input.brief, character ? `הדמות "${character.name}" (${(character.description ?? '').slice(0, 600)}) פותחת את הסרטון וסוגרת אותו בפנייה ישירה למצלמה.` : ''].filter(Boolean).join('\n'),
+    extra: [
+      input.brief,
+      character
+        ? `הדמות "${character.name}" (${(character.description ?? '').slice(0, 600)}) ${input.characterMode === 'talking' ? 'מדברת ישירות למצלמה בכל הסצנות' : input.characterMode === 'all' ? 'מופיעה בכל סצנה בתוך האקשן' : 'פותחת את הסרטון וסוגרת אותו בפנייה ישירה למצלמה, ומופיעה גם בשאר הסצנות'}.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
     defaultKind: motion,
   });
   if (character) {
+    const mode = input.characterMode ?? 'presenter';
     const speaking = avatarModel ? 'AVATAR' : motion;
-    const ids = [scenes[0]?.id, scenes.length > 1 ? scenes[scenes.length - 1]?.id : undefined].filter((x): x is string => Boolean(x));
-    await ctx.db.videoScene.updateMany({ where: { id: { in: ids } }, data: { visualKind: speaking, characterId: character.id } });
-    if (motion === 'AI_VIDEO') await ctx.db.videoScene.updateMany({ where: { projectId: project.id, id: { notIn: ids } }, data: { characterId: character.id } });
+    const ids = mode === 'talking' ? scenes.map((s) => s.id) : mode === 'all' ? [] : [scenes[0]?.id, scenes.length > 1 ? scenes[scenes.length - 1]?.id : undefined].filter((x): x is string => Boolean(x));
+    if (ids.length) await ctx.db.videoScene.updateMany({ where: { id: { in: ids } }, data: { visualKind: speaking, characterId: character.id } });
+    // The character is in every other scene too (as the subject of the motion clip).
+    await ctx.db.videoScene.updateMany({ where: { projectId: project.id, id: { notIn: ids } }, data: { characterId: character.id, ...(motion === 'AI_VIDEO' ? {} : { visualKind: 'AI_VIDEO' as const }) } });
   }
   const notes: string[] = [];
   if (input.reviewFirst) {

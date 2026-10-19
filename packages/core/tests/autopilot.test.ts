@@ -61,3 +61,21 @@ describe('content autopilot', () => {
     expect(new Set(all.map((p) => p.scheduledAt.toISOString().slice(0, 10))).size).toBe(2); // different days
   });
 });
+
+describe('ideas and character modes', () => {
+  it('proposes several distinct concepts and puts the character in every scene when asked', async () => {
+    const { owner, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const { generateConcepts } = await import('../src/services/autopilot');
+    const concepts = await generateConcepts(ctx, 'video', 4);
+    expect(concepts).toHaveLength(4);
+    expect(new Set(concepts.map((c) => c.title)).size).toBe(4);
+    const img = await uploadMedia(ctx, { data: await sharp({ create: { width: 64, height: 64, channels: 3, background: '#fff' } }).png().toBuffer(), originalName: 'c.png', mimeType: 'image/png' });
+    const { createCharacter } = await import('../src/services/characters');
+    const { autoProduceVideo } = await import('../src/services/video');
+    const robot = await createCharacter(ctx, { name: 'מאיה', imageMediaId: img.id, voice: 'nova' });
+    const res = await autoProduceVideo(ctx, { brief: concepts[0]!.brief, aspect: 'R9X16', characterId: robot.id, characterMode: 'all', sceneCount: 3, targetSeconds: 20, videoTier: 'flagship', reviewFirst: true });
+    const scenes = await db.videoScene.findMany({ where: { projectId: res.project.id } });
+    expect(scenes.every((s) => s.characterId === robot.id)).toBe(true);
+  });
+});

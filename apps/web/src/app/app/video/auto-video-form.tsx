@@ -1,20 +1,51 @@
 'use client';
 
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wand2 } from 'lucide-react';
+import { Lightbulb, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { formKey, formValue, idleState } from '@/lib/action-state';
-import { autoVideoAction } from './actions';
+import { Button } from '@/components/ui/button';
+import { callAction, formKey, formValue, idleState } from '@/lib/action-state';
+import { cn } from '@/lib/utils';
+import { autoVideoAction, videoIdeasAction } from './actions';
+
+interface Concept {
+  title: string;
+  angle: string;
+  hook: string;
+  brief: string;
+  productId: string | null;
+}
 import { VOICES } from './create-video-dialog';
 
 export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvatarProvider }: { products: { id: string; name: string }[]; characters: { id: string; name: string }[]; hasVideoProvider: boolean; hasAvatarProvider: boolean }) {
   const [state, action] = useActionState(autoVideoAction, idleState);
   const router = useRouter();
+  const [brief, setBrief] = useState(formValue(state, 'brief', ''));
+  const [productId, setProductId] = useState(formValue(state, 'productId', ''));
+  const [characterId, setCharacterId] = useState(formValue(state, 'characterId', ''));
+  const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [thinking, startThinking] = useTransition();
+  const getIdeas = () =>
+    startThinking(async () => {
+      const res = await callAction(videoIdeasAction());
+      if (res.status === 'error') toast.error(res.message);
+      else {
+        setConcepts(res.data as Concept[]);
+        setChosen(null);
+      }
+    });
+  const choose = (i: number) => {
+    const c = concepts[i]!;
+    setChosen(i);
+    setBrief(`${c.hook ? `${c.hook}\n` : ''}${c.brief}`);
+    if (c.productId) setProductId(c.productId);
+  };
   useEffect(() => {
     if (state.status === 'success') {
       const data = state.data as { id?: string; approvalRequired?: boolean } | undefined;
@@ -36,9 +67,28 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
       </CardHeader>
       <CardContent>
         <form key={formKey(state)} action={action} className="grid gap-3 md:grid-cols-4">
-          <Field label="על מה הסרטון? (אופציונלי)" name="brief" error={fieldError(state, 'brief')} className="md:col-span-4">
-            <Textarea id="brief" name="brief" rows={3} defaultValue={formValue(state, 'brief', '')} placeholder="אפשר להשאיר ריק — מנהל הקריאייטיב של המערכת ימציא קונספט חדש לפי המותג. או כתבו רעיון משלכם." />
-          </Field>
+          <div className="flex flex-col gap-2 md:col-span-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">רעיון לסרטון</span>
+              <Button type="button" size="sm" variant="outline" disabled={thinking} onClick={getIdeas}>
+                <Lightbulb /> {thinking ? 'מנהל הקריאייטיב חושב…' : concepts.length ? 'עוד 4 רעיונות' : 'תן לי 4 רעיונות'}
+              </Button>
+            </div>
+            {concepts.length ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {concepts.map((c, i) => (
+                  <button key={i} type="button" onClick={() => choose(i)} className={cn('rounded-lg border p-3 text-start transition-colors hover:border-primary', chosen === i && 'border-primary bg-primary/5 ring-2 ring-primary/30')}>
+                    <div className="text-sm font-semibold">{c.title}</div>
+                    {c.angle ? <div className="text-xs text-muted-foreground">{c.angle}</div> : null}
+                    {c.hook ? <div className="mt-1 text-sm">״{c.hook}״</div> : null}
+                    <div className="mt-1 line-clamp-3 text-xs text-muted-foreground">{c.brief}</div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <Textarea id="brief" name="brief" rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="בחרו אחד מהרעיונות, כתבו רעיון משלכם — או השאירו ריק והמערכת תמציא קונספט בעצמה." />
+            {fieldError(state, 'brief') ? <p className="text-xs text-destructive">{fieldError(state, 'brief')}</p> : null}
+          </div>
           <Field label="פורמט" name="aspect" error={fieldError(state, 'aspect')}>
             <Select id="aspect" name="aspect" defaultValue={formValue(state, 'aspect', 'R9X16')}>
               <option value="R9X16">רילס / סטורי 9:16</option>
@@ -71,7 +121,7 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
             </Select>
           </Field>
           <Field label={`דמות מציגה${hasAvatarProvider ? '' : ' (לסנכרון שפתיים חברו fal.ai)'}`} name="characterId" error={fieldError(state, 'characterId')}>
-            <Select id="characterId" name="characterId" defaultValue={formValue(state, 'characterId', '')}>
+            <Select id="characterId" name="characterId" value={characterId} onChange={(e) => setCharacterId(e.target.value)}>
               <option value="">— ללא —</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -81,7 +131,7 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
             </Select>
           </Field>
           <Field label="מוצר / שירות" name="productId" error={fieldError(state, 'productId')}>
-            <Select id="productId" name="productId" defaultValue={formValue(state, 'productId', '')}>
+            <Select id="productId" name="productId" value={productId} onChange={(e) => setProductId(e.target.value)}>
               <option value="">— המותג בכללותו —</option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -90,6 +140,15 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
               ))}
             </Select>
           </Field>
+          {characterId ? (
+            <Field label="תפקיד הדמות" name="characterMode" error={fieldError(state, 'characterMode')}>
+              <Select id="characterMode" name="characterMode" defaultValue={formValue(state, 'characterMode', 'presenter')}>
+                <option value="presenter">מציגה: פותחת וסוגרת בדיבור, מופיעה בכל הסצנות</option>
+                <option value="all">מופיעה בכל הסצנות (בתוך האקשן)</option>
+                <option value="talking">מדברת למצלמה בכל הסצנות</option>
+              </Select>
+            </Field>
+          ) : null}
           <Field label="קריין" name="voice" error={fieldError(state, 'voice')}>
             <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', 'onyx')}>
               {VOICES.map((v) => (

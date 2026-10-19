@@ -356,6 +356,7 @@ export const autoVideoSchema = z.object({
   videoTier: z.enum(['economy', 'balanced', 'flagship']).default('flagship'),
   voice: z.string().max(20).optional(),
   reviewFirst: z.boolean().default(true),
+  characterMode: z.enum(['presenter', 'all', 'talking']).default('presenter'),
 });
 
 export const sceneVisualKindSchema = z.enum(['CARD', 'MEDIA', 'AI_IMAGE', 'MEDIA_VIDEO', 'AI_VIDEO', 'AVATAR']);

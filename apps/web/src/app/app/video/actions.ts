@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  generateConcepts,
   cancelVideoRender,
   setScenesApproved,
   autoProduceVideo,
@@ -147,6 +148,7 @@ export async function autoVideoAction(prev: ActionState, formData: FormData): Pr
       videoTier: str(formData, 'videoTier') || undefined,
       voice: optionalStr(formData, 'voice') ?? undefined,
       reviewFirst: formData.get('reviewFirst') === 'on',
+      characterMode: optionalStr(formData, 'characterMode') ?? undefined,
     });
     const result = await autoProduceVideo(ctx, input);
     refresh(result.project.id);
@@ -171,5 +173,13 @@ export async function approveScenesAction(projectId: string, sceneIds: string[] 
     const n = await setScenesApproved(ctx, projectId, sceneIds, approved);
     refresh(projectId);
     return { message: approved ? (n > 1 ? `${n} סצנות אושרו` : 'הסצנה אושרה') : 'האישור בוטל' };
+  });
+}
+
+export async function videoIdeasAction(): Promise<ActionResult> {
+  return runAction(async () => {
+    const ctx = await requireBrandContext();
+    const concepts = await generateConcepts(ctx, 'video', 4);
+    return { message: `${concepts.length} רעיונות חדשים`, data: concepts };
   });
 }

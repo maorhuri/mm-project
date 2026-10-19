@@ -116,6 +116,38 @@ export async function generateConcept(ctx: BrandContext, kind: 'video' | 'image'
   return { ...concept, productId: product?.id ?? null };
 }
 
+/** Several distinct concepts at once (for "give me ideas"). */
+export async function generateConcepts(ctx: BrandContext, kind: 'video' | 'image', count = 4): Promise<Concept[]> {
+  const packet = await buildFactsPacket(ctx);
+  const [videos, products] = await Promise.all([
+    ctx.db.videoProject.findMany({ orderBy: { createdAt: 'desc' }, take: 15, select: { title: true } }),
+    ctx.db.brandProduct.findMany({ where: { isActive: true }, select: { id: true, name: true } }),
+  ]);
+  const recent = videos.map((r) => `- ${r.title}`).join('\n') || '(אין עדיין)';
+  const run = await runText(ctx, {
+    task: 'CREATIVE_IDEAS',
+    label: `${count} קונספטים ל${kind === 'video' ? 'סרטון' : 'פוסט'}`,
+    system: `${groundingRules(packet)}
+
+אתה מנהל קריאייטיב בכיר. הצע ${count} קונספטים שונים מאוד זה מזה ${kind === 'video' ? 'לסרטון רילס פרסומי של 30 שניות' : 'לפוסט תמונה פרסומי'} — כל אחד בזווית אחרת (למשל: ${ANGLES.slice(0, 6).join(' / ')}). לכל קונספט: הוק חזק לשנייה הראשונה, רעיון חד, ויז'ואל קולנועי, קריאה לפעולה. רק עובדות מהחבילה. אל תחזור על קונספטים קודמים.
+החזר JSON: {"concepts":[{"title":"שם קצר","angle":"הזווית","hook":"משפט ההוק","brief":"תיאור מלא לבמאי","productName":"שם מוצר או null"}]}`,
+    prompt: `<user_request>קונספטים קודמים:\n${recent}</user_request>`,
+    json: true,
+    temperature: 0.95,
+    maxOutputTokens: 3000,
+    factsHash: packet.hash,
+  });
+  const parsed = z.object({ concepts: z.array(conceptSchema).default([]) }).safeParse(run.json);
+  const list = parsed.success ? parsed.data.concepts : [];
+  const concepts = list.length
+    ? list
+    : ANGLES.slice(0, count).map((angle) => ({ title: `${packet.brandName} — ${angle}`, angle, hook: '', brief: `${angle}: על ${packet.brandName} לפי העובדות המאושרות`, productName: null }));
+  return concepts.slice(0, count).map((c) => {
+    const product = c.productName ? (products.find((p) => p.name === c.productName || c.productName!.includes(p.name)) ?? null) : null;
+    return { ...c, productId: product?.id ?? null };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Daily cycle
 // ---------------------------------------------------------------------------
