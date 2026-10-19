@@ -33,7 +33,7 @@ describe('content autopilot', () => {
     await expect(saveAutopilot(await ctxFor(editor, brandA.id), { enabled: true })).rejects.toThrow();
     expect((await runAutopilotCycle(ctx)).skipped).toContain('הטייס האוטומטי כבוי');
 
-    await saveAutopilot(ctx, { enabled: true, videosPerWeek: 3, imagePostsPerWeek: 4, channels: ['FACEBOOK_PAGE', 'INSTAGRAM'], tier: 'flagship', postHour: 19 });
+    await saveAutopilot(ctx, { enabled: true, videosPerWeek: 3, imagePostsPerWeek: 4, channels: ['FACEBOOK_PAGE', 'INSTAGRAM'], tier: 'flagship', postHour: 19, reviewBeforeRender: false });
     const res = await runAutopilotCycle(ctx, { force: true });
     expect(res.skipped).toEqual([]);
     expect(res.videos).toHaveLength(1);

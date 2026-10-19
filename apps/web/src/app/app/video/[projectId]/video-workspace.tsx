@@ -26,7 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { callAction, formChecked, formKey, formValue, idleState } from '@/lib/action-state';
 import { formatDateTime } from '@/lib/format';
 import { VOICES } from '../create-video-dialog';
-import { deleteVideoProjectAction, generateScriptAction, requestVideoApprovalAction, startRenderAction, updateSceneAction, updateSettingsAction } from '../actions';
+import { approveScenesAction, cancelRenderAction, deleteVideoProjectAction, generateScriptAction, requestVideoApprovalAction, startRenderAction, updateSceneAction, updateSettingsAction } from '../actions';
 
 type ProjectDto = Omit<VideoProject, 'costIls' | 'estimateIls'> & { costIls: number; estimateIls: number | null };
 export interface CharacterOption {
@@ -139,6 +139,11 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
               <div className="h-full bg-primary transition-all" style={{ width: `${project.renderProgress}%` }} />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">קליפים של וידאו AI ודמויות מדברות נוצרים אצל הספק ולוקחים בדרך כלל 1–5 דקות לכל סצנה. אפשר לעזוב את העמוד — הרינדור ממשיך ברקע.</p>
+            {canEdit ? (
+              <Button size="sm" variant="destructive" className="mt-2" disabled={pending || project.cancelRequested} onClick={() => confirm('לעצור את הרינדור? קליפים שכבר נוצרו נשמרים ולא ישולמו שוב.') && run(cancelRenderAction(project.id))}>
+                {project.cancelRequested ? 'עוצר…' : 'עצירת הרינדור'}
+              </Button>
+            ) : null}
           </AlertDescription>
         </Alert>
       ) : project.status === 'FAILED' && project.renderError ? (
@@ -198,6 +203,22 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
             </Card>
           ) : null}
 
+          {project.reviewRequired && scenes.length > 0 && !rendering ? (
+            <Alert variant={scenes.every((s) => s.approved) ? 'info' : 'warning'}>
+              <BadgeCheck />
+              <AlertTitle>
+                בדיקת סצנות לפני רינדור — {scenes.filter((s) => s.approved).length}/{scenes.length} אושרו
+              </AlertTitle>
+              <AlertDescription>
+                עברו על כל סצנה: קריינות, טקסט, ויז&apos;ואל ודמות. שינוי בסצנה מבטל את האישור שלה. כשהכול מאושר — לחצו &quot;רינדור הסרטון&quot;.
+                {canEdit && !scenes.every((s) => s.approved) ? (
+                  <Button size="sm" className="ms-2" disabled={pending} onClick={() => run(approveScenesAction(project.id, 'all', true))}>
+                    אישור כל הסצנות
+                  </Button>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {canEdit && !rendering ? <ScriptForm projectId={project.id} hasScenes={scenes.length > 0} /> : null}
 
           {scenes.length === 0 ? (
@@ -205,7 +226,7 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
           ) : (
             <ol className="flex flex-col gap-3">
               {scenes.map((s) => (
-                <SceneCard key={s.id} brandId={brandId} projectId={project.id} scene={s} images={images} videos={videos} characters={characters} canEdit={canEdit && !rendering} ratio={ratio} />
+                <SceneCard key={s.id} brandId={brandId} projectId={project.id} scene={s} images={images} videos={videos} characters={characters} canEdit={canEdit && !rendering} ratio={ratio} review={project.reviewRequired} />
               ))}
             </ol>
           )}
@@ -432,7 +453,9 @@ function SceneCard({
   characters,
   canEdit,
   ratio,
+  review,
 }: {
+  review: boolean;
   brandId: string;
   projectId: string;
   scene: VideoScene;
@@ -443,6 +466,7 @@ function SceneCard({
   ratio: string;
 }) {
   const [state, action] = useActionState(updateSceneAction.bind(null, projectId, scene.id), idleState);
+  const [approving, startApprove] = useTransition();
   const [kind, setKind] = useState<string>(scene.visualKind);
   const [mediaId, setMediaId] = useState<string | null>(scene.mediaId);
   const [characterId, setCharacterId] = useState<string>(scene.characterId ?? '');
@@ -471,6 +495,7 @@ function SceneCard({
             <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold">{scene.order}</span>
             {scene.durationMs ? <Badge variant="outline">{(scene.durationMs / 1000).toFixed(1)} שנ&apos;</Badge> : null}
             {showClip && meta.clipMock ? <Badge variant="warning">MOCK</Badge> : null}
+            {review ? scene.approved ? <Badge variant="success">אושרה</Badge> : <Badge variant="warning">ממתינה לאישור</Badge> : null}
           </div>
           <div className="flex items-center justify-center overflow-hidden rounded-lg bg-muted/40" style={{ aspectRatio: ratio }}>
             {showClip ? (
@@ -562,10 +587,30 @@ function SceneCard({
           )}
           <FormMessage state={state} />
           {canEdit ? (
-            <div>
+            <div className="flex flex-wrap gap-2">
               <SubmitButton size="sm" variant="outline" pendingText="שומר…">
                 <Save /> שמירת סצנה
               </SubmitButton>
+              {review ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={scene.approved ? 'ghost' : 'default'}
+                  disabled={approving}
+                  onClick={() =>
+                    startApprove(async () => {
+                      const res = await callAction(approveScenesAction(projectId, [scene.id], !scene.approved));
+                      if (res.status === 'error') toast.error(res.message);
+                      else {
+                        toast.success(res.message);
+                        router.refresh();
+                      }
+                    })
+                  }
+                >
+                  <BadgeCheck /> {scene.approved ? 'ביטול אישור' : 'אישור הסצנה'}
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </fieldset>

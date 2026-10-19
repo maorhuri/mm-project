@@ -100,6 +100,9 @@ export function AutopilotForm({ cfg, characters, canAdmin, canRun }: { cfg: Auto
                   ))}
                 </Select>
               </Field>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="reviewBeforeRender" defaultChecked={cfg.reviewBeforeRender} className="size-4" /> לעצור כל סרטון לפני רינדור לאישור הסצנות שלי
+              </label>
               <Field label="שעת פרסום מועדפת" name="postHour" error={fieldError(state, 'postHour')}>
                 <Select id="postHour" name="postHour" defaultValue={String(cfg.postHour)}>
                   {[8, 10, 12, 14, 17, 19, 20, 21].map((h) => (

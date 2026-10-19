@@ -99,8 +99,11 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
               ))}
             </Select>
           </Field>
+          <label className="flex items-center gap-2 text-sm md:col-span-4">
+            <input type="checkbox" name="reviewFirst" defaultChecked className="size-4" /> לעצור לפני הרינדור כדי שאבדוק ואאשר כל סצנה (מומלץ)
+          </label>
           <div className="flex items-end">
-            <SubmitButton className="w-full" pendingText="כותב תסריט ומתחיל הפקה…">
+            <SubmitButton className="w-full" pendingText="כותב תסריט ומכין סצנות…">
               <Wand2 /> הפק סרטון
             </SubmitButton>
           </div>

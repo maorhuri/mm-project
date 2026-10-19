@@ -304,3 +304,49 @@ describe('fal-only video routing', () => {
     expect(withAudio.ils).toBeCloseTo(7 * 0.168 * 3.7, 3);
   });
 });
+
+describe('scene review and stopping a render', () => {
+  const started: string[] = [];
+  beforeEach(() => {
+    started.length = 0;
+    setVideoRenderDispatcher(async (_ctx, projectId) => {
+      started.push(projectId);
+    });
+  });
+  afterEach(() => setVideoRenderDispatcher(null));
+
+  it('auto video stops for scene approval; render only after every scene is approved; edits reset approval', async () => {
+    const { owner, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const { autoProduceVideo, setScenesApproved } = await import('../src/services/video');
+    const res = await autoProduceVideo(ctx, { brief: '', aspect: 'R9X16', sceneCount: 3, targetSeconds: 20, videoTier: 'balanced', reviewFirst: true });
+    expect(started).toEqual([]);
+    const detail = await getVideoProject(ctx, res.project.id);
+    expect(detail.project.reviewRequired).toBe(true);
+    expect(detail.project.title.length).toBeGreaterThan(1); // the creative director invented a concept
+    await expect(startVideoRender(ctx, res.project.id)).rejects.toThrow(/לאשר את כל הסצנות/);
+    await setScenesApproved(ctx, res.project.id, 'all', true);
+    await updateVideoScene(ctx, detail.scenes[0]!.id, { narration: 'שינוי', visualKind: 'CARD' });
+    await expect(startVideoRender(ctx, res.project.id)).rejects.toThrow(/ממתינות: 1/);
+    await setScenesApproved(ctx, res.project.id, [detail.scenes[0]!.id], true);
+    await startVideoRender(ctx, res.project.id);
+    expect(started).toEqual([res.project.id]);
+  });
+
+  it('stop render: the worker stops at the next step and the project returns to editing', async () => {
+    const { owner, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const { cancelVideoRender, renderVideoProject } = await import('../src/services/video');
+    const project = await createVideoProject(ctx, { title: 'עצירה', aspect: 'R9X16', voice: 'alloy' });
+    await generateVideoScript(ctx, project.id, { sceneCount: 2, targetSeconds: 10 });
+    await startVideoRender(ctx, project.id);
+    const requested = await cancelVideoRender(ctx, project.id);
+    expect(requested.cancelRequested).toBe(true);
+    const backend = { renderHtml: async () => { throw new Error('should not render'); }, encodeVariants: async () => { throw new Error('no'); } };
+    const stopped = await renderVideoProject(ctx, project.id, backend as never);
+    expect(stopped.status).toBe('SCRIPTED');
+    expect(stopped.renderStep).toBe('הרינדור נעצר');
+    expect(stopped.cancelRequested).toBe(false);
+    await expect(cancelVideoRender(ctx, project.id)).rejects.toBeInstanceOf(ConflictError);
+  });
+});

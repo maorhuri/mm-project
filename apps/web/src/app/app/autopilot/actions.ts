@@ -17,6 +17,7 @@ export async function saveAutopilotAction(prev: ActionState, formData: FormData)
       tier: str(formData, 'tier') || undefined,
       characterId: str(formData, 'characterId') || null,
       postHour: str(formData, 'postHour'),
+      reviewBeforeRender: formData.get('reviewBeforeRender') === 'on',
     });
     revalidatePath('/app/autopilot');
     return { message: cfg.enabled ? 'הטייס האוטומטי פעיל — מחזור יצירה רץ כל בוקר ב-07:00' : 'הטייס האוטומטי כבוי' };

@@ -29,6 +29,8 @@ export const autopilotConfigSchema = z.object({
   characterId: z.string().uuid().nullable().default(null),
   /** Preferred publishing hour (Israel time). */
   postHour: z.coerce.number().int().min(6).max(23).default(19),
+  /** Stop each video before rendering for scene approval. */
+  reviewBeforeRender: z.boolean().default(true),
 });
 export type AutopilotConfig = z.infer<typeof autopilotConfigSchema>;
 
@@ -153,7 +155,8 @@ export async function runAutopilotCycle(ctx: BrandContext, opts: { force?: boole
   for (let i = 0; i < Math.min(wantVideos, 2); i++) {
     try {
       const concept = await generateConcept(ctx, 'video');
-      const res = await autoProduceVideo(ctx, { brief: `${concept.hook ? `${concept.hook}\n` : ''}${concept.brief}`, aspect: 'R9X16', productId: concept.productId, characterId: cfg.characterId, sceneCount: 5, targetSeconds: 30, videoTier: cfg.tier, voice: 'onyx' });
+      const res = await autoProduceVideo(ctx, { brief: `${concept.hook ? `${concept.hook}\n` : ''}${concept.brief}`, aspect: 'R9X16', productId: concept.productId, characterId: cfg.characterId, sceneCount: 5, targetSeconds: 30, videoTier: cfg.tier, voice: 'onyx', reviewFirst: cfg.reviewBeforeRender });
+      if (cfg.reviewBeforeRender) await notifyBrandAdmins({ ...ctx, actor: { ...ctx.actor, userId: '' } }, { level: 'INFO', title: `סרטון חדש ממתין לאישור סצנות: ${concept.title}`, body: 'אשרו את הסצנות והרינדור יתחיל', link: `/app/video/${res.project.id}` }).catch(() => undefined);
       await ctx.db.videoProject.update({ where: { id: res.project.id }, data: { origin: 'autopilot', title: concept.title.slice(0, 120) } });
       result.videos.push({ projectId: res.project.id, title: concept.title, message: res.message });
     } catch (err) {

@@ -484,6 +484,7 @@ export async function updateVideoScene(ctx: BrandContext, sceneId: string, input
       characterId,
       // The last render no longer reflects this scene; caches (narration / image / clip) are kept and re-validated by key.
       renderedImageId: null,
+      approved: false,
       durationMs: null,
     },
   });
@@ -525,7 +526,7 @@ export function setVideoRenderDispatcher(fn: RenderDispatcher | null): void {
 async function dispatchRender(ctx: BrandContext, projectId: string, renderApprovalId: string | null, estimateIls: number): Promise<VideoProject> {
   const updated = await ctx.db.videoProject.update({
     where: { id: projectId },
-    data: { status: 'RENDERING', renderProgress: 0, renderStep: 'בתור', renderError: null, approvalId: null, renderApprovalId, estimateIls },
+    data: { status: 'RENDERING', renderProgress: 0, renderStep: 'בתור', renderError: null, approvalId: null, renderApprovalId, estimateIls, cancelRequested: false },
   });
   try {
     await dispatcher(ctx, projectId);
@@ -544,6 +545,10 @@ export async function startVideoRender(ctx: BrandContext, projectId: string): Pr
   if (scenes.length === 0) throw new ConflictError('אין סצנות — צרו תסריט תחילה');
   const qa = project.qa as unknown as QaReport | null;
   if (qa?.status === 'BLOCKED') throw new ConflictError('בקרת האיכות חסמה את התסריט — תקנו את הסצנות המסומנות');
+  if (project.reviewRequired) {
+    const pendingScenes = scenes.filter((s) => !s.approved).map((s) => s.order);
+    if (pendingScenes.length) throw new ConflictError(`יש לאשר את כל הסצנות לפני הרינדור (ממתינות: ${pendingScenes.join(', ')})`);
+  }
   const activeCharacters = new Set(characters.filter((c) => c.isActive).map((c) => c.id));
   for (const s of scenes) {
     if (s.visualKind === 'MEDIA' && !s.mediaId) throw new ConflictError(`סצנה ${s.order}: לא נבחרה תמונה`);
@@ -659,6 +664,36 @@ export function subtitleStyle(aspect: VideoProject['aspect']): string {
 
 export type VideoRenderBackend = RenderBackend;
 
+class RenderCancelledError extends Error {
+  constructor() {
+    super('render cancelled');
+  }
+}
+
+/** Ask the worker to stop this render at its next step (a clip already being generated finishes and is kept). */
+export async function cancelVideoRender(ctx: BrandContext, projectId: string): Promise<VideoProject> {
+  assertBrandRole(ctx, 'EDITOR');
+  const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
+  if (!project) throw new NotFoundError('video project');
+  if (project.status !== 'RENDERING') throw new ConflictError('הסרטון לא מרונדר כעת');
+  // A render that stopped reporting (worker died) is released immediately.
+  if (!isActivelyRendering(project)) return ctx.db.videoProject.update({ where: { id: projectId }, data: { status: 'SCRIPTED', renderStep: 'הרינדור נעצר', renderProgress: 0, cancelRequested: false } });
+  const updated = await ctx.db.videoProject.update({ where: { id: projectId }, data: { cancelRequested: true, renderStep: 'עוצר…' } });
+  await auditFromContext(ctx, { action: 'video.render.cancel', entityType: 'video_project', entityId: projectId });
+  return updated;
+}
+
+/** Approve (or un-approve) scenes for rendering. */
+export async function setScenesApproved(ctx: BrandContext, projectId: string, sceneIds: string[] | 'all', approved: boolean): Promise<number> {
+  assertBrandRole(ctx, 'EDITOR');
+  const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
+  if (!project) throw new NotFoundError('video project');
+  if (isActivelyRendering(project)) throw new ConflictError('הסרטון מרונדר כעת');
+  const res = await ctx.db.videoScene.updateMany({ where: { projectId, ...(sceneIds === 'all' ? {} : { id: { in: sceneIds } }) }, data: { approved } });
+  await auditFromContext(ctx, { action: approved ? 'video.scenes.approve' : 'video.scenes.unapprove', entityType: 'video_project', entityId: projectId, after: { count: res.count } });
+  return res.count;
+}
+
 /** Stream a media object to `<base>.<ext>` (extension from its MIME type); returns the file path. */
 async function downloadMedia(ctx: BrandContext, mediaId: string, base: string): Promise<{ asset: MediaAsset; file: string }> {
   const { asset, object } = await openMediaObject(ctx, mediaId);
@@ -758,6 +793,8 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
   const tier = project.videoTier as AiTier;
   const coveredBy = project.renderApprovalId ?? undefined;
   const progress = async (renderProgress: number, renderStep: string) => {
+    const current = await ctx.db.videoProject.findUnique({ where: { id: projectId }, select: { cancelRequested: true } });
+    if (current?.cancelRequested) throw new RenderCancelledError();
     await ctx.db.videoProject.update({ where: { id: projectId }, data: { renderProgress, renderStep, status: 'RENDERING' } });
   };
   const dir = await mkdtemp(path.join(os.tmpdir(), 'mm-video-'));
@@ -969,6 +1006,12 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
     await auditFromContext(ctx, { action: 'video.render.complete', entityType: 'video_project', entityId: projectId, after: { durationMs, costIls, scenes: scenes.length } });
     return updated;
   } catch (err) {
+    if (err instanceof RenderCancelledError) {
+      // Clips already paid for stay cached on their scenes; the next render re-uses them.
+      const stopped = await ctx.db.videoProject.update({ where: { id: projectId }, data: { status: 'SCRIPTED', renderStep: 'הרינדור נעצר', renderProgress: 0, renderError: null, cancelRequested: false, costIls: Math.round(rc.costIls * 10_000) / 10_000 } });
+      await auditFromContext(ctx, { action: 'video.render.cancelled', entityType: 'video_project', entityId: projectId, after: { costIls: rc.costIls } });
+      return stopped;
+    }
     const message = err instanceof Error ? err.message : String(err);
     await ctx.db.videoProject.update({ where: { id: projectId }, data: { status: 'FAILED', renderStep: 'נכשל', renderError: message.slice(0, 1000), costIls: Math.round(rc.costIls * 10_000) / 10_000 } }).catch(() => undefined);
     throw err;
@@ -1013,6 +1056,8 @@ registerApprovalHandler('video_project', async (ctx, approval) => {
 // ---------------------------------------------------------------------------
 
 export interface AutoProduceInput {
+  /** Stop before rendering so every scene can be reviewed and approved. */
+  reviewFirst?: boolean;
   brief: string;
   title?: string;
   aspect: VideoProject['aspect'];
@@ -1058,6 +1103,10 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
     if (motion === 'AI_VIDEO') await ctx.db.videoScene.updateMany({ where: { projectId: project.id, id: { notIn: ids } }, data: { characterId: character.id } });
   }
   const notes: string[] = [];
+  if (input.reviewFirst) {
+    await ctx.db.videoProject.update({ where: { id: project.id }, data: { reviewRequired: true } });
+    return { project, approvalRequired: false, message: 'התסריט והסצנות מוכנים — עברו על כל סצנה, שנו מה שצריך (כולל בחירת דמות), אשרו ולחצו רינדור' };
+  }
   if (!videoModel) notes.push('אין ספק וידאו מחובר — הסצנות נוצרו כתמונות AI עם תנועת מצלמה. חברו fal.ai (Kling 3.0) לאנימציה אמיתית');
   if (character && !avatarModel) notes.push('אין ספק דמויות מדברות — חברו fal.ai לסנכרון שפתיים');
   try {

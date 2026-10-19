@@ -854,6 +854,10 @@ model VideoProject {
   motionStills     Boolean     @default(true) @map("motion_stills")
   /// manual | autopilot
   origin           String      @default("manual")
+  /// Scenes must be approved one by one before the render may start
+  reviewRequired   Boolean     @default(false) @map("review_required")
+  /// Set by "stop render"; the worker stops at the next step
+  cancelRequested  Boolean     @default(false) @map("cancel_requested")
   /// Model tier for AI video clips / avatars: economy | balanced | flagship
   videoTier        String      @default("balanced") @map("video_tier")
   /// Keep the video model's native sound (mixed low under the narration)
@@ -899,6 +903,8 @@ model VideoScene {
   clipMediaId     String?         @map("clip_media_id") @db.Uuid
   /// { provider, model, seconds, costIls, cacheKey, mock }
   clipMeta        Json?           @map("clip_meta")
+  /// Reviewed and approved for rendering (reset on every edit)
+  approved        Boolean         @default(false)
   createdAt       DateTime        @default(now()) @map("created_at")
 
   brand   Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)

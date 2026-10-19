@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  cancelVideoRender,
+  setScenesApproved,
   autoProduceVideo,
   autoVideoSchema,
   createVideoProject,
@@ -144,6 +146,7 @@ export async function autoVideoAction(prev: ActionState, formData: FormData): Pr
       targetSeconds: numberOrNull(formData, 'targetSeconds') ?? undefined,
       videoTier: str(formData, 'videoTier') || undefined,
       voice: optionalStr(formData, 'voice') ?? undefined,
+      reviewFirst: formData.get('reviewFirst') === 'on',
     });
     const result = await autoProduceVideo(ctx, input);
     refresh(result.project.id);
@@ -151,4 +154,22 @@ export async function autoVideoAction(prev: ActionState, formData: FormData): Pr
     revalidatePath('/app', 'layout');
     return { message: result.message, data: { id: result.project.id, approvalRequired: result.approvalRequired } };
   }, formData, prev);
+}
+
+export async function cancelRenderAction(projectId: string): Promise<ActionResult> {
+  return runAction(async () => {
+    const ctx = await requireBrandContext();
+    const p = await cancelVideoRender(ctx, projectId);
+    refresh(projectId);
+    return { message: p.status === 'RENDERING' ? 'הרינדור ייעצר בשלב הבא (קליפ שכבר בייצור יסתיים וישמר)' : 'הרינדור נעצר' };
+  });
+}
+
+export async function approveScenesAction(projectId: string, sceneIds: string[] | 'all', approved: boolean): Promise<ActionResult> {
+  return runAction(async () => {
+    const ctx = await requireBrandContext();
+    const n = await setScenesApproved(ctx, projectId, sceneIds, approved);
+    refresh(projectId);
+    return { message: approved ? (n > 1 ? `${n} סצנות אושרו` : 'הסצנה אושרה') : 'האישור בוטל' };
+  });
 }
