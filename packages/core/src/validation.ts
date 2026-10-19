@@ -422,3 +422,22 @@ export const metaSelectSchema = z.object({
 });
 export type MetaAppCredentialsInput = z.infer<typeof metaAppCredentialsSchema>;
 export type MetaSelectInput = z.infer<typeof metaSelectSchema>;
+
+// ---------------------------------------------------------------------------
+// Phase 4 — posts
+// ---------------------------------------------------------------------------
+export const socialChannelSchema = z.enum(['FACEBOOK_PAGE', 'INSTAGRAM']);
+export const postSchema = z.object({
+  channels: z.array(socialChannelSchema).min(1, 'בחרו לפחות ערוץ אחד'),
+  caption: z.string().max(5000).default(''),
+  mediaId: z.string().uuid().nullable().optional(),
+  sourceType: z.enum(['creative_version', 'video_project', 'media']).nullable().optional(),
+  sourceId: z.string().uuid().nullable().optional(),
+  scheduledAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'בחרו תאריך ושעה'),
+});
+export const postUpdateSchema = z.object({
+  caption: z.string().max(5000).default(''),
+  mediaId: z.string().uuid().nullable().optional(),
+  scheduledAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'בחרו תאריך ושעה'),
+});
+export const captionRequestSchema = z.object({ channel: socialChannelSchema, brief: z.string().trim().min(3, 'תארו את הפוסט').max(1500) });

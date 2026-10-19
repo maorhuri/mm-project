@@ -180,6 +180,7 @@ model Brand {
   adInsights       AdInsight[]
   integrationSyncs IntegrationSync[]
   characters       BrandCharacter[]
+  scheduledPosts   ScheduledPost[]
 
   @@unique([orgId, slug])
   @@index([orgId, status])
@@ -1078,4 +1079,62 @@ model BrandCharacter {
 
   @@index([brandId, isActive])
   @@map("brand_characters")
+}
+
+// ===========================================================================
+// Phase 4 — content calendar and publishing (Facebook Page / Instagram)
+// ===========================================================================
+
+enum SocialChannel {
+  FACEBOOK_PAGE
+  INSTAGRAM
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum PostMediaType {
+  NONE
+  IMAGE
+  VIDEO
+}
+
+/// One post on one channel. Publishing happens only after the bound approval (content hash) is APPROVED.
+model ScheduledPost {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  brandId      String        @map("brand_id") @db.Uuid
+  channel      SocialChannel
+  caption      String
+  mediaType    PostMediaType @default(NONE) @map("media_type")
+  mediaId      String?       @map("media_id") @db.Uuid
+  /// creative_version | video_project | media
+  sourceType   String?       @map("source_type")
+  sourceId     String?       @map("source_id") @db.Uuid
+  scheduledAt  DateTime      @map("scheduled_at")
+  status       PostStatus    @default(DRAFT)
+  /// Hash of channel + caption + media: the approval is bound to it
+  contentHash  String        @map("content_hash")
+  approvalId   String?       @map("approval_id") @db.Uuid
+  externalId   String?       @map("external_id")
+  permalink    String?
+  error        String?
+  attempts     Int           @default(0)
+  publishedAt  DateTime?     @map("published_at")
+  meta         Json          @default("{}")
+  createdById  String?       @map("created_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("scheduled_posts")
 }

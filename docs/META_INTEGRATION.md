@@ -42,6 +42,13 @@ the app through App Review.
 
 Not yet verified against a real Meta app: the owner has to enter the App ID / Secret (and the Login for Business configuration id) and add the redirect URI in the app settings; then connect a brand in dev mode. Writes to Meta do not exist in the code base yet.
 
+## Publishing (Phase 4, 2026-10-19)
+
+Verified against developers.facebook.com on 2026-10-19:
+- Page posts need a **Page access token** and `pages_manage_posts` + `pages_read_engagement` (+ `publish_video` for video). Text: `POST /{page-id}/feed message`; photo: `POST /{page-id}/photos` (we upload the file as multipart `source`); video: `POST graph-video.facebook.com/{page-id}/videos`.
+- Instagram with Facebook Login: `instagram_basic` + `instagram_content_publish` + `pages_read_engagement`, Page token. `POST /{ig-id}/media` (image_url — JPEG only, must be publicly reachable — or `media_type=REELS` + `upload_type=resumable`, then binary upload to `rupload.facebook.com` with `Authorization: OAuth`, `offset`, `file_size`), poll `status_code` until `FINISHED`, then `POST /{ig-id}/media_publish creation_id`. Up to 100 API posts per 24 h.
+- The Login-for-Business configuration must include these permissions; reconnect after changing it.
+
 ## Planned next (after the live dev-mode test)
 
 1. **Settings (org-wide)**: App ID + App Secret entered in the Integrations page

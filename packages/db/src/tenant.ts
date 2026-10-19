@@ -34,6 +34,7 @@ export const TENANT_MODELS = new Set([
   'AdInsight',
   'IntegrationSync',
   'BrandCharacter',
+  'ScheduledPost',
 ]);
 
 /** The Brand model itself is scoped by its primary key rather than a brand_id column. */

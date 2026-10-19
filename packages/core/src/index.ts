@@ -31,6 +31,8 @@ export * from './services/creative';
 export * from './services/strategy';
 export * from './services/video';
 export * from './services/characters';
+export * from './services/publishing';
+export * from './services/public-media';
 export * from './media/ffmpeg';
 export * from './services/meta';
 export * from './meta/graph';

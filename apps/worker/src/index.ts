@@ -15,6 +15,7 @@ import {
   getQueue,
   getRedisConnection,
   listMetaConnectedBrandIds,
+  publishDuePosts,
   logger,
   renderCreativeVersion,
   renderVideoProject,
@@ -102,11 +103,15 @@ const adsProcessors: Record<string, Processor> = {
   },
 };
 
+const publishingProcessors: Record<string, Processor> = {
+  [JOBS.publishDue]: async () => publishDuePosts(),
+};
+
 const processors: Record<QueueName, Record<string, Processor>> = {
   system: systemProcessors,
   media: {},
   content: contentProcessors,
-  publishing: {},
+  publishing: publishingProcessors,
   ads: adsProcessors,
   video: videoProcessors,
   ai: {},
@@ -164,6 +169,8 @@ async function scheduleRecurringJobs(): Promise<void> {
     { pattern: '0 4 * * *', tz: 'Asia/Jerusalem' },
     { name: JOBS.cleanupSessions },
   );
+  // Publishing: approved posts go out within a minute of their time.
+  await getQueue(QUEUES.publishing).upsertJobScheduler(JOBS.publishDue, { every: 60_000 }, { name: JOBS.publishDue });
   // Meta ads mirror: once a night (insights for yesterday are final by then); manual syncs come from the UI.
   await getQueue(QUEUES.ads).upsertJobScheduler(JOBS.metaSync, { pattern: '30 5 * * *', tz: 'Asia/Jerusalem' }, { name: JOBS.metaSync, data: { days: 30 } });
 }

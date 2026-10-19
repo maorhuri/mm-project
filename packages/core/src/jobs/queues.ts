@@ -20,6 +20,7 @@ export const JOBS = {
   creativeRender: 'creative.render',
   videoRender: 'video.render',
   metaSync: 'ads.sync-meta',
+  publishDue: 'publishing.dispatch-due',
 } as const;
 
 let connection: IORedis | undefined;

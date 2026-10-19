@@ -177,6 +177,13 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
                       </a>
                     </Button>
                   ) : null}
+                  {canEdit ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/app/calendar?source=video_project:${project.id}`}>
+                        <BadgeCheck /> תזמון לפרסום
+                      </Link>
+                    </Button>
+                  ) : null}
                   {canEdit && project.status === 'READY' ? (
                     <Button size="sm" disabled={pending} onClick={() => run(requestVideoApprovalAction(project.id))}>
                       <Send /> שליחה לאישור

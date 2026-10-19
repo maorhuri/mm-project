@@ -5,7 +5,7 @@ verified**, and what is **pending**. Nothing is marked verified unless it was
 exercised on the real server (https://mm-marketing.mymvn.app) or by automated
 tests run there.
 
-_Last updated: 2026-10-16 10:40 — **Phase 2 + Phase 3 v1 live and browser-verified** (commit `e1c2477`); **Meta read-only integration built** (this commit) awaiting the owner's app credentials._
+_Last updated: 2026-10-19 — **Phase 4 (calendar + publishing) built**; Video Studio upgraded to real AI motion (Veo 3.1), talking characters (Kling AI Avatar via fal.ai), one-click production, music and transitions._
 
 ## Phase 1 — Foundation: LIVE
 
@@ -128,6 +128,27 @@ Chromium render and a real FFmpeg assembly; the live browser click-through
 | **מנהל קמפיינים** (`/app/ads`): totals, daily spend bars, campaigns table, read-only label, 7/30/90-day ranges | ✅ renders (empty until a brand is connected) |
 | Live test against the real Meta app (dev mode) | ⏳ needs the owner: App ID + App Secret (+ configuration id) in Integrations → add `https://mm-marketing.mymvn.app/api/v1/integrations/meta/callback` to Valid OAuth Redirect URIs → "התחברות עם פייסבוק" on the brand |
 | Writes (paused drafts, budget changes) behind approvals; app review for public use | ⏳ next phase |
+
+## Video Studio v2 — motion, characters, one-click (2026-10-16 → 10-19)
+
+| Item | Status |
+| --- | --- |
+| **סרטון אוטומטי**: one brief → cinematic script (visual + camera prompts) → every scene real AI video → optional talking presenter → music, transitions, subtitles → render (approval above the single-run cap starts the render automatically) | ✅ live (`80e8199`); needs a Google key with billing for real motion |
+| Scene types: card / library image / AI image (Ken Burns zoom), library video, **AI video (Veo 3.1, 1080p, 8 s, native audio)**, **talking character (Kling AI Avatar v2 via fal.ai, lip-sync driven by our Hebrew audio)** | ✅ built; Veo / fal adapters await the owner's keys |
+| Brand characters (image + voice + description, AI portrait generation) | ✅ |
+| Reels overlay layout (headline in the upper band, subtitles in the reserved lower band), cross-fades, ducked background music, narration/image/clip caching (re-render pays only for changes) | ✅ verified with a real Chromium + FFmpeg pipeline test |
+| Sora API | ❌ shut down by OpenAI on 2026-09-24 (SDK notice) — not used |
+| Review fixes: video approval bound to the rendered file, dead renders no longer lock edits, Meta EXPIRED only on code 190, QA catches bare prices | ✅ |
+
+## Phase 4 — content calendar and publishing: BUILT (this commit)
+
+| Item | Status |
+| --- | --- |
+| **לוח תוכן ופרסום** (`/app/calendar`): month grid, list, new/edit post, AI captions grounded in approved facts, sources = rendered creatives / videos / library media | ✅ |
+| One post per channel (Facebook Page, Instagram); approval bound to the exact content (hash); content edits void the approval; time changes don't | ✅ tested |
+| Worker `publishing.dispatch-due` every minute: claim SCHEDULED → PUBLISHING (never twice), Facebook text / photo (multipart) / video (graph-video), Instagram image (JPEG via signed 1-hour public link) and Reels (resumable binary upload), status polling, permalinks, 3 attempts with back-off, stuck posts surfaced as FAILED, admins notified | ✅ tested with a fake Graph API |
+| Live publishing | ⏳ needs the Meta connection with `pages_manage_posts`, `publish_video`, `instagram_basic`, `instagram_content_publish` in the Login-for-Business configuration; Cloudflare must let Meta fetch `/api/v1/public/media/*` |
+| Monthly auto-planner, automation rules | ⏳ next |
 
 ## Known gaps / next steps
 - Manual UI click-through of every screen (owner + Claude); fix anything found.

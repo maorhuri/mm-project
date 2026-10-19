@@ -12,9 +12,7 @@ import {
   Megaphone,
   Palette,
   Plug,
-  Send,
   Settings,
-  Share2,
   Sparkles,
   Users,
   Wallet,
@@ -39,9 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/app/creative', label: 'סטודיו קריאייטיב', icon: Lightbulb },
   { href: '/app/video', label: 'סטודיו וידאו', icon: Clapperboard },
   { href: '/app/media', label: 'ספריית מדיה', icon: Images },
-  { href: '/app/modules/calendar', label: 'לוח תוכן', icon: CalendarDays, phase: 4, module: 'calendar' },
-  { href: '/app/modules/social-accounts', label: 'חשבונות סושיאל', icon: Share2, phase: 4, module: 'social-accounts' },
-  { href: '/app/modules/publishing', label: 'פרסום אורגני', icon: Send, phase: 4, module: 'publishing' },
+  { href: '/app/calendar', label: 'לוח תוכן ופרסום', icon: CalendarDays },
   { href: '/app/ads', label: 'מנהל קמפיינים', icon: Megaphone },
   { href: '/app/modules/crm', label: 'לידים ו-CRM', icon: Users, phase: 6, module: 'crm' },
   { href: '/app/modules/analytics', label: 'אנליטיקה', icon: BarChart3, phase: 5, module: 'analytics' },
@@ -64,27 +60,6 @@ export interface ModuleInfo {
 
 /** Honest status for modules not yet built (no fake screens, no demo numbers). */
 export const MODULES: Record<string, ModuleInfo> = {
-  calendar: {
-    key: 'calendar',
-    title: 'לוח תוכן',
-    phase: 4,
-    summary: 'תוכנית תוכן חודשית אוטומטית לכל מותג, עם אישור מרוכז לפני תזמון.',
-    deliverables: ['יצירת תוכנית חודשית', 'מניעת תוכן כפול', 'גרסאות לכל ערוץ'],
-  },
-  'social-accounts': {
-    key: 'social-accounts',
-    title: 'חשבונות סושיאל',
-    phase: 4,
-    summary: 'חיבור OAuth רשמי לעמודי Facebook ולחשבונות Instagram עסקיים.',
-    deliverables: ['Meta OAuth', 'שמירת הרשאות מוצפנת', 'סטטוס חיבור'],
-  },
-  publishing: {
-    key: 'publishing',
-    title: 'פרסום אורגני',
-    phase: 4,
-    summary: 'תזמון ופרסום פוסטים, תמונות וסרטונים דרך ה-API הרשמי, רק אחרי אישור.',
-    deliverables: ['Scheduler', 'Idempotency נגד פרסום כפול', 'סטטוס ושגיאות', 'נתוני ביצועים'],
-  },
   crm: {
     key: 'crm',
     title: 'לידים ו-CRM',

@@ -23,9 +23,9 @@ export class MetaApiError extends AppError {
   }
 }
 
-export type GraphFetcher = (url: string, init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; headers: { get(name: string): string | null }; text(): Promise<string> }>;
+export type GraphFetcher = (url: string, init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string | FormData | Uint8Array; signal?: AbortSignal }) => Promise<{ status: number; headers: { get(name: string): string | null }; text(): Promise<string> }>;
 
-const defaultFetcher: GraphFetcher = (url, init) => fetch(url, init);
+const defaultFetcher: GraphFetcher = (url, init) => fetch(url, init as RequestInit);
 
 export interface GraphPage<T> {
   data: T[];
@@ -46,13 +46,36 @@ export class GraphClient {
     const url = new URL(path.startsWith('https://') ? path : `${this.base}/${path.replace(/^\//, '')}`);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     if (accessToken) url.searchParams.set('access_token', accessToken);
+    return this.request<T>(url.toString(), { method: 'GET', headers: { accept: 'application/json' } }, 30_000);
+  }
+
+  /** POST as multipart form (files as Blob). Host defaults to graph.facebook.com; pass `host` for graph-video. */
+  async post<T = unknown>(path: string, fields: Record<string, string | number | Blob | undefined>, accessToken: string, opts: { host?: string; timeoutMs?: number } = {}): Promise<T> {
+    const base = opts.host ? this.base.replace('graph.facebook.com', opts.host) : this.base;
+    const url = path.startsWith('https://') ? path : `${base}/${path.replace(/^\//, '')}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined) continue;
+      if (v instanceof Blob) form.append(k, v, k === 'source' ? 'upload' : undefined);
+      else form.append(k, String(v));
+    }
+    form.append('access_token', accessToken);
+    return this.request<T>(url, { method: 'POST', headers: { accept: 'application/json' }, body: form }, opts.timeoutMs ?? 120_000);
+  }
+
+  /** Raw binary POST (Instagram resumable upload host). */
+  async postBinary<T = unknown>(url: string, body: Uint8Array, headers: Record<string, string>, timeoutMs = 600_000): Promise<T> {
+    return this.request<T>(url, { method: 'POST', headers: { accept: 'application/json', ...headers }, body }, timeoutMs);
+  }
+
+  private async request<T>(url: string, init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string | FormData | Uint8Array }, timeoutMs: number): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let status = 0;
     let text = '';
     let usage: string | null = null;
     try {
-      const res = await this.fetcher(url.toString(), { method: 'GET', headers: { accept: 'application/json' }, signal: controller.signal });
+      const res = await this.fetcher(url, { ...init, signal: controller.signal });
       status = res.status;
       text = await res.text();
       usage = res.headers.get('x-business-use-case-usage') ?? res.headers.get('x-app-usage');
@@ -61,16 +84,16 @@ export class GraphClient {
     } finally {
       clearTimeout(timer);
     }
-    if (usage) logger.debug({ usage: usage.slice(0, 300), path: url.pathname }, 'meta api usage');
+    if (usage) logger.debug({ usage: usage.slice(0, 300), path: new URL(url).pathname }, 'meta api usage');
     let json: unknown;
     try {
       json = text ? JSON.parse(text) : {};
     } catch {
       throw new MetaApiError(`Meta API returned a non-JSON response (${status})`, { status: 502 });
     }
-    const error = (json as { error?: { message?: string; type?: string; code?: number; error_subcode?: number; fbtrace_id?: string } }).error;
+    const error = (json as { error?: { message?: string; type?: string; code?: number; error_subcode?: number; fbtrace_id?: string; error_user_msg?: string } }).error;
     if (error || status >= 400) {
-      throw new MetaApiError(`Meta: ${error?.message ?? `HTTP ${status}`}`, {
+      throw new MetaApiError(`Meta: ${error?.error_user_msg ?? error?.message ?? `HTTP ${status}`}`, {
         status: status === 401 || status === 403 || error?.code === 190 ? 401 : status === 429 ? 429 : 502,
         code: error?.code ?? null,
         subcode: error?.error_subcode ?? null,

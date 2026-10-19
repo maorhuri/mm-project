@@ -286,6 +286,11 @@ export function CreativeWorkspace({ brandId, canEdit, project, versions, ideas, 
                           ) : null}
                         </>
                       ) : null}
+                      {canEdit && v.renderedJpgId ? (
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/app/calendar?source=creative_version:${v.id}`}>תזמון לפרסום</Link>
+                        </Button>
+                      ) : null}
                       {canApprove ? (
                         <Button size="sm" disabled={pending} onClick={() => run(requestApprovalAction(project.id, v.id))}>
                           <Send /> שליחה לאישור

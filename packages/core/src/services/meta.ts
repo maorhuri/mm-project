@@ -26,7 +26,17 @@ export const META_APP_PROVIDER = 'meta_app';
 export const META_STATE_COOKIE = 'mm_meta_state';
 export const META_STATE_TTL_SEC = 600;
 /** Requested only when no Facebook Login for Business configuration id is set. */
-export const META_SCOPES = ['ads_read', 'ads_management', 'business_management', 'pages_show_list', 'pages_read_engagement'];
+export const META_SCOPES = [
+  'ads_read',
+  'ads_management',
+  'business_management',
+  'pages_show_list',
+  'pages_read_engagement',
+  'pages_manage_posts',
+  'publish_video',
+  'instagram_basic',
+  'instagram_content_publish',
+];
 
 // ---------------------------------------------------------------------------
 // App credentials (org-wide)
