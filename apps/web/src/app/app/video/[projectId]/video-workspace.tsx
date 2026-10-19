@@ -1,5 +1,6 @@
 'use client';
 
+import { VoiceSelect } from '@/components/voice-select';
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,7 +26,6 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { callAction, formChecked, formKey, formValue, idleState } from '@/lib/action-state';
 import { formatDateTime } from '@/lib/format';
-import { VOICES } from '../create-video-dialog';
 import { approveScenesAction, cancelRenderAction, deleteVideoProjectAction, generateScriptAction, requestVideoApprovalAction, startRenderAction, updateSceneAction, updateSettingsAction } from '../actions';
 
 type ProjectDto = Omit<VideoProject, 'costIls' | 'estimateIls'> & { costIls: number; estimateIls: number | null };
@@ -333,13 +333,7 @@ function SettingsForm({ brandId, project, musicOptions }: { brandId: string; pro
       <CardContent>
         <form key={formKey(state)} action={action} className="flex flex-col gap-3">
           <Field label="קול הקריין (סצנות של דמות מדברת משתמשות בקול של הדמות)" name="voice" error={fieldError(state, 'voice')}>
-            <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', project.voice)}>
-              {VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </Select>
+            <VoiceSelect brandId={brandId} name="voice" defaultValue={formValue(state, 'voice', project.voice)} />
           </Field>
           <Field label="איכות וידאו AI ודמויות" name="videoTier" error={fieldError(state, 'videoTier')}>
             <Select id="videoTier" name="videoTier" defaultValue={formValue(state, 'videoTier', project.videoTier)}>

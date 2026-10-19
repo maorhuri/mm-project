@@ -90,3 +90,21 @@ export async function generateCharacterImage(ctx: BrandContext, input: Character
   });
   return { asset, run };
 }
+
+/** A short Hebrew sample of an OpenAI voice (generated once per brand and voice, then cached in the media library). */
+export async function voiceSample(ctx: BrandContext, voice: string): Promise<MediaAsset> {
+  const { ttsVoiceSchema } = await import('../validation');
+  const v = ttsVoiceSchema.parse(voice);
+  const tag = `voice-sample-${v}`;
+  const cached = await ctx.db.mediaAsset.findFirst({ where: { tags: { has: tag }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  if (cached) return cached;
+  const { runTts } = await import('../ai/engine');
+  const tts = await runTts(ctx, {
+    text: `שלום! ככה אני נשמע בסרטונים של ${ctx.brand.name}. קצב טבעי, אנרגיה טובה, ובדיוק המסר שצריך.`,
+    voice: v,
+    format: 'mp3',
+    label: `דוגמת קול ${v}`,
+    instructions: 'Native Israeli Hebrew voice-over for an Instagram Reel: energetic, confident and warm, brisk conversational pace.',
+  });
+  return uploadMedia(ctx, { data: tts.audio, originalName: `voice-${v}.mp3`, mimeType: tts.mimeType, title: `דוגמת קול ${v}`, tags: ['voice-sample', tag], source: 'AI_GENERATED' });
+}

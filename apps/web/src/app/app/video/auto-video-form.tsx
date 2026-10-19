@@ -1,5 +1,6 @@
 'use client';
 
+import { VoiceSelect } from '@/components/voice-select';
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lightbulb, Wand2 } from 'lucide-react';
@@ -20,9 +21,8 @@ interface Concept {
   brief: string;
   productId: string | null;
 }
-import { VOICES } from './create-video-dialog';
 
-export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvatarProvider }: { products: { id: string; name: string }[]; characters: { id: string; name: string }[]; hasVideoProvider: boolean; hasAvatarProvider: boolean }) {
+export function AutoVideoForm({ brandId, products, characters, hasVideoProvider, hasAvatarProvider }: { brandId: string; products: { id: string; name: string }[]; characters: { id: string; name: string }[]; hasVideoProvider: boolean; hasAvatarProvider: boolean }) {
   const [state, action] = useActionState(autoVideoAction, idleState);
   const router = useRouter();
   const [brief, setBrief] = useState(formValue(state, 'brief', ''));
@@ -150,13 +150,7 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
             </Field>
           ) : null}
           <Field label={characterId ? "קריין (בסרטון עם דמות — קול הדמות)" : "קריין"} name="voice" error={fieldError(state, 'voice')}>
-            <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', 'onyx')}>
-              {VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </Select>
+            <VoiceSelect brandId={brandId} name="voice" defaultValue={formValue(state, 'voice', 'onyx')} />
           </Field>
           <label className="flex items-center gap-2 text-sm md:col-span-4">
             <input type="checkbox" name="reviewFirst" defaultChecked className="size-4" /> לעצור לפני הרינדור כדי שאבדוק ואאשר כל סצנה (מומלץ)

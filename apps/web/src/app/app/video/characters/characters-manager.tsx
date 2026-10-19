@@ -1,5 +1,6 @@
 'use client';
 
+import { VoiceSelect } from '@/components/voice-select';
 import { useActionState, useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, Pencil, Plus, Sparkles, UserRound } from 'lucide-react';
@@ -12,10 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, FormMessage, SubmitButton, fieldError } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { callAction, formKey, formValue, idleState } from '@/lib/action-state';
-import { VOICES } from '../create-video-dialog';
 import { archiveCharacterAction, generateCharacterImageAction, saveCharacterAction } from './actions';
 
 export interface CharacterDto {
@@ -136,13 +135,7 @@ function CharacterDialog({ brandId, character, images, onImageCreated, onClose }
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="קול" name="voice" error={fieldError(state, 'voice')}>
-                <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', character?.voice ?? 'alloy')}>
-                  {VOICES.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </Select>
+                <VoiceSelect brandId={brandId} name="voice" defaultValue={formValue(state, 'voice', character?.voice ?? 'alloy')} />
               </Field>
               <Field label="סגנון דיבור (אופציונלי)" name="voiceInstructions" error={fieldError(state, 'voiceInstructions')}>
                 <Input id="voiceInstructions" name="voiceInstructions" maxLength={1000} defaultValue={formValue(state, 'voiceInstructions', character?.voiceInstructions ?? '')} placeholder="Energetic, cheerful, playful" />

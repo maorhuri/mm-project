@@ -30,12 +30,13 @@ export default async function VideoPage() {
                 <UserRound /> דמויות המותג
               </Link>
             </Button>
-            {canEdit ? <CreateVideoDialog products={productOptions} /> : null}
+            {canEdit ? <CreateVideoDialog brandId={ctx.brandId} products={productOptions} /> : null}
           </div>
         }
       />
       {canEdit ? (
         <AutoVideoForm
+          brandId={ctx.brandId}
           products={productOptions}
           characters={characters.map((c) => ({ id: c.id, name: c.name }))}
           hasVideoProvider={Boolean(videoModel && !videoModel.isMock)}
@@ -43,7 +44,7 @@ export default async function VideoPage() {
         />
       ) : null}
       {projects.length === 0 ? (
-        <EmptyState icon={Clapperboard} title="אין עדיין סרטונים" description="צרו פרויקט, בקשו תסריט, ערכו את הסצנות ורנדרו." action={canEdit ? <CreateVideoDialog products={productOptions} /> : null} />
+        <EmptyState icon={Clapperboard} title="אין עדיין סרטונים" description="צרו פרויקט, בקשו תסריט, ערכו את הסצנות ורנדרו." action={canEdit ? <CreateVideoDialog brandId={ctx.brandId} products={productOptions} /> : null} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {projects.map((p) => (

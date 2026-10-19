@@ -1,5 +1,6 @@
 'use client';
 
+import { VoiceSelect } from '@/components/voice-select';
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
@@ -27,7 +28,7 @@ export const VOICES: { id: string; label: string }[] = [
   { id: 'verse', label: 'Verse' },
 ];
 
-export function CreateVideoDialog({ products }: { products: { id: string; name: string }[] }) {
+export function CreateVideoDialog({ brandId, products }: { brandId: string; products: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -41,13 +42,13 @@ export function CreateVideoDialog({ products }: { products: { id: string; name: 
           <DialogTitle>פרויקט וידאו חדש</DialogTitle>
           <DialogDescription>תסריט מה-AI (מבוסס עובדות מאושרות) → קריינות בעברית → כרטיסיות ממותגות / תמונות → MP4 עם כתוביות.</DialogDescription>
         </DialogHeader>
-        {open ? <CreateForm products={products} onClose={() => setOpen(false)} /> : null}
+        {open ? <CreateForm brandId={brandId} products={products} onClose={() => setOpen(false)} /> : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function CreateForm({ products, onClose }: { products: { id: string; name: string }[]; onClose: () => void }) {
+function CreateForm({ brandId, products, onClose }: { brandId: string; products: { id: string; name: string }[]; onClose: () => void }) {
   const [state, action] = useActionState(createVideoProjectAction, idleState);
   const router = useRouter();
   useEffect(() => {
@@ -88,13 +89,7 @@ function CreateForm({ products, onClose }: { products: { id: string; name: strin
           </Select>
         </Field>
         <Field label="קול קריינות (OpenAI)" name="voice" error={fieldError(state, 'voice')}>
-          <Select id="voice" name="voice" defaultValue={formValue(state, 'voice', 'alloy')}>
-            {VOICES.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </Select>
+          <VoiceSelect brandId={brandId} name="voice" defaultValue={formValue(state, 'voice', 'alloy')} />
         </Field>
       </div>
       <FormMessage state={state} />

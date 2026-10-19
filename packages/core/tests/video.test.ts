@@ -351,3 +351,16 @@ describe('scene review and stopping a render', () => {
     await expect(cancelVideoRender(ctx, project.id)).rejects.toBeInstanceOf(ConflictError);
   });
 });
+
+describe('voice samples', () => {
+  it('creates one Hebrew sample per voice and re-uses it', async () => {
+    const { owner, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const { voiceSample } = await import('../src/services/characters');
+    const a = await voiceSample(ctx, 'nova');
+    const b = await voiceSample(ctx, 'nova');
+    expect(b.id).toBe(a.id);
+    expect(a.tags).toContain('voice-sample-nova');
+    await expect(voiceSample(ctx, 'robot-voice')).rejects.toThrow();
+  });
+});

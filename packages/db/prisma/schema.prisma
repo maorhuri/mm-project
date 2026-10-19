@@ -854,6 +854,10 @@ model VideoProject {
   motionStills     Boolean     @default(true) @map("motion_stills")
   /// manual | autopilot
   origin           String      @default("manual")
+  /// Visual bible (English): setting, cast, wardrobe, lighting, camera, grade — applied to every shot
+  visualBible      String?     @map("visual_bible")
+  /// Each AI shot starts from the last frame of the previous one (one continuous film)
+  chainShots       Boolean     @default(true) @map("chain_shots")
   /// Scenes must be approved one by one before the render may start
   reviewRequired   Boolean     @default(false) @map("review_required")
   /// Set by "stop render"; the worker stops at the next step

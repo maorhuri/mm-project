@@ -70,7 +70,9 @@ const SCENE_TAIL_MS = 150;
 const DEFAULT_NARRATOR = 'Native Israeli Hebrew voice-over for an Instagram Reel: energetic, confident and warm, brisk conversational pace, no pauses between sentences, like a real person talking.';
 /** Cross-fade between scenes. */
 const TRANSITION_MS = 250;
-const CLIP_NEGATIVE = 'on-screen text, captions, subtitles, letters, words, logos, watermark, distorted faces, extra fingers, blurry';
+const CLIP_NEGATIVE = 'CGI, 3D render, cartoon, animation, plastic skin, waxy face, uncanny, over-smoothed, oversaturated, AI artifacts, morphing, warped hands, extra fingers, distorted faces, on-screen text, captions, letters, logos, watermark, blurry';
+/** House style for every shot: real commercial footage, not "AI look". */
+const REALISM = 'Photorealistic live-action commercial footage shot on ARRI Alexa 35 with a 35mm prime lens, natural motivated lighting, real skin texture and pores, subtle film grain, accurate anatomy, physically plausible motion, shallow depth of field, professional colour grade.';
 
 // ---------------------------------------------------------------------------
 // Projects & scenes
@@ -201,9 +203,9 @@ export function imageCacheKey(project: Pick<VideoProject, 'aspect'>, scene: Scen
   return key('img', project.aspect, imagePrompt(scene));
 }
 
-export function clipCacheKey(project: ProjectLike, scene: SceneLike, character: BrandCharacter | null): string | null {
+export function clipCacheKey(project: ProjectLike, scene: SceneLike, character: BrandCharacter | null, chainFrom: string | null = null): string | null {
   if (scene.visualKind === 'AI_VIDEO') {
-    return key('clip', project.aspect, project.videoTier, project.ambientAudio, scene.visualPrompt, scene.motionPrompt, scene.mediaId, character?.imageMediaId, character?.description, scene.mediaId ? '' : imageCacheKey(project, scene));
+    return key('clip', project.aspect, project.videoTier, project.ambientAudio, scene.visualPrompt, scene.motionPrompt, scene.mediaId, character?.imageMediaId, character?.description, scene.mediaId ? '' : imageCacheKey(project, scene), chainFrom, (project as { visualBible?: string | null }).visualBible);
   }
   if (scene.visualKind === 'AVATAR') {
     const voice = narrationVoice(project, scene, character);
@@ -275,7 +277,9 @@ export async function estimateVideoProject(ctx: BrandContext, project: VideoProj
     const seconds = estimatedSceneSeconds(s.narration);
     const imageCached = (cache.imageKey === imageCacheKey(project, s) && Boolean(cache.imageMediaId)) || (s.visualKind === 'AI_IMAGE' && Boolean(s.mediaId) && !cache.imageKey);
     if (s.visualKind === 'AI_IMAGE' && !imageCached) aiImages += 1;
-    const clipKey = clipCacheKey(project, s, character);
+    const prev = scenes[scenes.indexOf(s) - 1];
+    const chainFrom = project.chainShots && s.visualKind === 'AI_VIDEO' && !s.mediaId && prev && (prev.visualKind === 'AI_VIDEO' || prev.visualKind === 'MEDIA_VIDEO') ? (prev.clipMediaId ?? prev.mediaId) : null;
+    const clipKey = clipCacheKey(project, s, character, chainFrom);
     const clipCached = Boolean(clipKey && cache.clipKey === clipKey && s.clipMediaId);
     if (s.visualKind === 'AI_VIDEO') {
       if (clipCached) cachedClips += 1;
@@ -326,6 +330,7 @@ export async function estimateVideoProject(ctx: BrandContext, project: VideoProj
 
 const scriptOutputSchema = z.object({
   title: z.string().max(200).default(''),
+  look: z.string().max(2000).nullish(),
   scenes: z
     .array(
       z.object({
@@ -341,8 +346,10 @@ const scriptOutputSchema = z.object({
 
 const SCRIPT_FORMAT = `
 ## פורמט הפלט (JSON בלבד)
-{"title":"שם הסרטון","scenes":[{"narration":"משפט קריינות טבעי בעברית, עד 20 מילים (כ-6 שניות)","onScreenText":"עד 6 מילים על המסך","visualPrompt":"English cinematic shot description for a premium ad: subject, setting, lighting, lens, colour grade. No text, no logos.","motionPrompt":"English camera move + action, e.g. 'slow dolly-in while the developer smiles and turns to camera'","claims":[{"text":"משפט עובדתי","factIds":["P1.F1"]}]}]}
+{"title":"שם הסרטון","look":"ENGLISH visual bible for the whole film: ONE location, the exact cast (age, look, wardrobe), time of day, lighting, camera style and colour grade — so every shot belongs to the same real shoot","scenes":[{"narration":"משפט קריינות טבעי בעברית, עד 20 מילים (כ-6 שניות)","onScreenText":"עד 6 מילים על המסך","visualPrompt":"English cinematic shot description for a premium ad: subject, setting, lighting, lens, colour grade. No text, no logos.","motionPrompt":"English camera move + action, e.g. 'slow dolly-in while the developer smiles and turns to camera'","claims":[{"text":"משפט עובדתי","factIds":["P1.F1"]}]}]}
 - כל סצנה היא שוט פרסומי ברמה של סרט: ויז'ואל ספציפי ומרשים, לא קלישאות כלליות; התנועה ב-motionPrompt דינמית ומשרתת את המסר.
+- רצף אחד עם המשכיות מלאה: אותו מקום, אותם אנשים ובגדים, אותה תאורה — כל שוט ממשיך את הקודם (כמו צילום אמיתי של פרסומת), לא אוסף תמונות לא קשורות.
+- ריאליזם מלא: צילום חי של אנשים אמיתיים, לא אנימציה ולא מראה של AI.
 - הסצנה הראשונה היא הוק (3 שניות), האחרונה קריאה לפעולה.
 - הקריינות נשמעת בקול רם: ללא סוגריים, ללא קיצורים, מספרים במילים כשזה טבעי.
 - onScreenText קצר וחד, לא חוזר מילה במילה על הקריינות.`;
@@ -431,6 +438,7 @@ export async function generateVideoScript(ctx: BrandContext, projectId: string, 
       renderError: null,
       approvalId: null,
       renderApprovalId: null,
+      visualBible: parsed.data.look?.trim() || null,
     },
   });
   await auditFromContext(ctx, { action: 'video.script.generate', entityType: 'video_project', entityId: projectId, after: { scenes: rows.length, model: run.modelId, mock: run.isMock, qa: qa.status } });
@@ -754,7 +762,7 @@ async function ensureSceneImage(rc: SceneRenderContext, scene: VideoScene, cache
   const img = await runImage(rc.ctx, {
     task: 'CREATIVE_BACKGROUND',
     label: `תמונה לסצנה ${scene.order} — ${rc.project.title}`,
-    prompt: `${imagePrompt(scene)}. Cinematic, brand-safe, no text, no logos, no watermarks.`,
+    prompt: `${rc.project.visualBible ? `${rc.project.visualBible}. ` : ''}${imagePrompt(scene)}. ${REALISM} No text, no logos, no watermarks.`,
     ...imageSize(rc.project.aspect),
     quality: 'medium',
     metadata: { projectId: rc.project.id, sceneId: scene.id },
@@ -810,6 +818,8 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
     const sceneFiles: { video: string; durationMs: number }[] = [];
     const srtScenes: { narration: string; durationMs: number }[] = [];
 
+    // Continuity: the last frame of the previous motion clip opens the next AI shot.
+    let previous: { file: string; mediaId: string | null } | null = null;
     for (const [i, scene] of scenes.entries()) {
       const slice = (fraction: number) => Math.round(5 + ((i + fraction) / scenes.length) * 80);
       const label = `סצנה ${scene.order}/${scenes.length}`;
@@ -879,7 +889,8 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         background = { kind: 'clip', file, clipMs: info.durationMs, hasAudio: info.hasAudio, audio: project.ambientAudio ? 'mix' : 'narration' };
         overlay = reelOverlay();
       } else if (scene.visualKind === 'AI_VIDEO') {
-        const ck = clipCacheKey(project, scene, character)!;
+        const chain = project.chainShots && !scene.mediaId && previous ? previous : null;
+        const ck = clipCacheKey(project, scene, character, chain?.mediaId ?? null)!;
         let clipFile = await cachedClip(rc, scene, cache, ck, path.join(dir, `scene-${scene.order}-cached-clip`));
         let hasAudio = Boolean(cache.clipHasAudio);
         if (!clipFile) {
@@ -890,15 +901,24 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
           const useReference = Boolean(character && (caps.referenceImages ?? 0) > 0 && (caps.referenceWithStart || !scene.mediaId));
           const needStart = caps.requiresStartImage || caps.referenceWithStart || !useReference;
           // With a character, the clip opens on the character itself so it is visible from the first frame.
-          const startImageId = scene.mediaId ?? (needStart ? (character ? character.imageMediaId : await ensureSceneImage(rc, scene, cache)) : null);
-          const start = startImageId ? await readMediaBuffer(ctx, startImageId, 25 * 1024 * 1024) : null;
+          let start: { data: Buffer; asset: { mimeType: string } } | null = null;
+          if (chain) {
+            const frame = path.join(dir, `scene-${scene.order}-chain.png`);
+            await ffmpeg(['-sseof', '-0.15', '-i', chain.file, '-frames:v', '1', frame], 60_000);
+            start = { data: await readFile(frame), asset: { mimeType: 'image/png' } };
+          } else {
+            const startImageId = scene.mediaId ?? (needStart ? (character ? character.imageMediaId : await ensureSceneImage(rc, scene, cache)) : null);
+            start = startImageId ? await readMediaBuffer(ctx, startImageId, 25 * 1024 * 1024) : null;
+          }
           const reference = useReference && character ? await readMediaBuffer(ctx, character.imageMediaId, 25 * 1024 * 1024) : null;
           const subject = imagePrompt(scene);
           const prompt = [
+            project.visualBible ? `${project.visualBible}.` : '',
             `${subject}.`,
             character?.description ? `Main character: ${character.description.slice(0, 600)}.` : '',
             scene.motionPrompt ? `${scene.motionPrompt}.` : 'Smooth cinematic camera movement with natural, lively motion.',
-            'Premium brand marketing shot. No on-screen text, captions or logos.',
+            REALISM,
+            'No on-screen text, captions or logos.',
           ]
             .filter(Boolean)
             .join(' ');
@@ -977,6 +997,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
       await extractFrame(sceneVideo, Math.min(1.5, durationMs / 2000), thumb);
       const frameAsset = await uploadMedia(ctx, { data: await readFile(thumb), originalName: `scene-${scene.order}.jpg`, mimeType: 'image/jpeg', title: `פריים סצנה ${scene.order} — ${project.title}`, tags: ['video', 'frame'], source: 'RENDERED' });
 
+      previous = background.kind === 'clip' && (scene.visualKind === 'AI_VIDEO' || scene.visualKind === 'MEDIA_VIDEO') ? { file: background.file, mediaId: scene.visualKind === 'AI_VIDEO' ? clipMediaId : scene.mediaId } : null;
       sceneFiles.push({ video: sceneVideo, durationMs });
       srtScenes.push({ narration: scene.narration, durationMs });
       await ctx.db.videoScene.update({
