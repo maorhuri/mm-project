@@ -30,6 +30,10 @@ function googleError(err: unknown): AiProviderError {
   if (err instanceof AiProviderError) return err;
   const status = (err as { status?: number; code?: number }).status ?? (err as { code?: number }).code;
   const message = err instanceof Error ? err.message : String(err);
+  // Free-tier projects have no Veo quota: Google answers 429 "check your plan and billing" (or 403 PERMISSION_DENIED).
+  if (/check your plan and billing|PERMISSION_DENIED|does not have permission/i.test(message)) {
+    return new AiProviderError('google', 'Google Veo: הפרויקט של מפתח ה-Gemini אינו בחשבון בתשלום — Veo לא זמין ב-Free Tier. הפעילו Billing לפרויקט של המפתח ב-aistudio.google.com (ובדקו ב-ai.dev/rate-limit שהדרגה אינה Free), ונסו שוב.', { status: 402, retryable: false });
+  }
   const retryable = status === 429 || status === 503 || (typeof status === 'number' && status >= 500);
   return new AiProviderError('google', `Google Veo: ${message.slice(0, 400)}`, { status: status === 429 ? 429 : 502, retryable });
 }
