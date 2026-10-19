@@ -843,7 +843,7 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
           const subject = imagePrompt(scene);
           const prompt = [
             `${subject}.`,
-            character?.description ? `Main character: ${character.description}.` : '',
+            character?.description ? `Main character: ${character.description.slice(0, 600)}.` : '',
             scene.motionPrompt ? `${scene.motionPrompt}.` : 'Smooth cinematic camera movement with natural, lively motion.',
             'Premium brand marketing shot. No on-screen text, captions or logos.',
           ]
@@ -1048,7 +1048,7 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
   const { scenes } = await generateVideoScript(ctx, project.id, {
     sceneCount: input.sceneCount,
     targetSeconds: input.targetSeconds,
-    extra: [input.brief, character ? `הדמות "${character.name}" (${character.description ?? ''}) פותחת את הסרטון וסוגרת אותו בפנייה ישירה למצלמה.` : ''].filter(Boolean).join('\n'),
+    extra: [input.brief, character ? `הדמות "${character.name}" (${(character.description ?? '').slice(0, 600)}) פותחת את הסרטון וסוגרת אותו בפנייה ישירה למצלמה.` : ''].filter(Boolean).join('\n'),
     defaultKind: motion,
   });
   if (character) {

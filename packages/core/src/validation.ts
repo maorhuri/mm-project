@@ -382,16 +382,16 @@ export const videoSettingsSchema = z.object({
 });
 
 export const characterSchema = z.object({
-  name: z.string().trim().min(2, 'שם קצר מדי').max(60),
-  description: optionalText(800),
+  name: z.string().trim().min(2, 'שם קצר מדי').max(80, 'עד 80 תווים'),
+  description: z.string().trim().max(4000, 'התיאור ארוך מדי (עד 4,000 תווים)').nullable().optional(),
   imageMediaId: z.string().uuid('בחרו תמונה לדמות'),
   voice: ttsVoiceSchema.default('alloy'),
-  voiceInstructions: optionalText(300),
+  voiceInstructions: z.string().trim().max(1000, 'עד 1,000 תווים').nullable().optional(),
 });
 
 export const characterImageRequestSchema = z.object({
-  description: z.string().trim().min(5, 'תארו את הדמות').max(800),
-  style: optionalText(300),
+  description: z.string().trim().min(5, 'תארו את הדמות').max(4000, 'התיאור ארוך מדי (עד 4,000 תווים)'),
+  style: z.string().trim().max(500, 'עד 500 תווים').nullable().optional(),
 });
 
 export type CreativeProjectInput = z.infer<typeof creativeProjectSchema>;

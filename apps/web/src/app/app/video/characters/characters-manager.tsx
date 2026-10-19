@@ -129,10 +129,10 @@ function CharacterDialog({ brandId, character, images, onImageCreated, onClose }
           <form key={formKey(state)} action={action} className="flex flex-col gap-3">
             <input type="hidden" name="imageMediaId" value={imageId ?? ''} />
             <Field label="שם" name="name" error={fieldError(state, 'name')}>
-              <Input id="name" name="name" required maxLength={60} defaultValue={formValue(state, 'name', character?.name ?? '')} autoFocus />
+              <Input id="name" name="name" required maxLength={80} defaultValue={formValue(state, 'name', character?.name ?? '')} autoFocus />
             </Field>
             <Field label="תיאור מראה ואופי (אנגלית עדיף — משמש בפרומפטים לווידאו)" name="description" error={fieldError(state, 'description')}>
-              <Textarea id="description" name="description" rows={3} maxLength={800} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A friendly round blue robot mascot with big expressive eyes and a small antenna" />
+              <Textarea id="description" name="description" rows={5} maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A friendly round blue robot mascot with big expressive eyes and a small antenna" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="קול" name="voice" error={fieldError(state, 'voice')}>
@@ -145,7 +145,7 @@ function CharacterDialog({ brandId, character, images, onImageCreated, onClose }
                 </Select>
               </Field>
               <Field label="סגנון דיבור (אופציונלי)" name="voiceInstructions" error={fieldError(state, 'voiceInstructions')}>
-                <Input id="voiceInstructions" name="voiceInstructions" maxLength={300} defaultValue={formValue(state, 'voiceInstructions', character?.voiceInstructions ?? '')} placeholder="Energetic, cheerful, playful" />
+                <Input id="voiceInstructions" name="voiceInstructions" maxLength={1000} defaultValue={formValue(state, 'voiceInstructions', character?.voiceInstructions ?? '')} placeholder="Energetic, cheerful, playful" />
               </Field>
             </div>
             <div>
@@ -162,8 +162,8 @@ function CharacterDialog({ brandId, character, images, onImageCreated, onClose }
           </form>
           <form key={formKey(genState)} action={genAction} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
             <div className="text-sm font-medium">או ציור הדמות ב-AI</div>
-            <Textarea name="description" rows={4} required minLength={5} maxLength={800} value={description} onChange={(e) => setDescription(e.target.value)} className="text-xs" placeholder="תיאור הדמות" />
-            <Input name="style" maxLength={300} defaultValue={formValue(genState, 'style', '')} placeholder="סגנון: 3D Pixar-like / photoreal / flat illustration" className="text-xs" />
+            <Textarea name="description" rows={6} required minLength={5} maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} className="text-xs" placeholder="תיאור הדמות" />
+            <Input name="style" maxLength={500} defaultValue={formValue(genState, 'style', '')} placeholder="סגנון: 3D Pixar-like / photoreal / flat illustration" className="text-xs" />
             {fieldError(genState, 'description') ? <p className="text-xs text-destructive">{fieldError(genState, 'description')}</p> : null}
             <FormMessage state={genState} />
             <SubmitButton size="sm" variant="outline" pendingText="מצייר… (עד דקה)">
