@@ -851,6 +851,12 @@ model VideoProject {
   videoTier        String      @default("balanced") @map("video_tier")
   /// Keep the video model's native sound (mixed low under the narration)
   ambientAudio     Boolean     @default(false) @map("ambient_audio")
+  /// Short cross-fades between scenes
+  transitions      Boolean     @default(true)
+  /// Background music from the media library (looped, ducked under the narration)
+  musicMediaId     String?     @map("music_media_id") @db.Uuid
+  /// Music volume 0–100
+  musicVolume      Int         @default(18) @map("music_volume")
   /// AI_HIGH_COST approval that covers an expensive render (estimate above the single-run cap)
   renderApprovalId String?     @map("render_approval_id") @db.Uuid
   estimateIls      Decimal?    @map("estimate_ils") @db.Decimal(12, 4)

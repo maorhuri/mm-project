@@ -13,7 +13,8 @@ import { removeProviderKeyAction, saveProviderKeyAction, testProviderAction } fr
 const HELP: Record<string, { label: string; url: string; placeholder: string }> = {
   openai: { label: 'OpenAI', url: 'https://platform.openai.com/api-keys', placeholder: 'sk-…' },
   anthropic: { label: 'Anthropic', url: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…' },
-  google: { label: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', placeholder: 'AIza…' },
+  google: { label: 'Google AI Studio (נדרש חשבון בתשלום ל-Veo)', url: 'https://aistudio.google.com/apikey', placeholder: 'AIza…' },
+  fal: { label: 'fal.ai', url: 'https://fal.ai/dashboard/keys', placeholder: 'key-id:key-secret' },
 };
 
 export function ProviderKeyControls({ provider, hasKey, keyHint, canManage }: { provider: string; hasKey: boolean; keyHint: string | null; canManage: boolean }) {

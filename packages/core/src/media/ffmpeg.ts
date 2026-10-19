@@ -162,3 +162,85 @@ export async function composeScene(spec: SceneComposeSpec): Promise<void> {
 export async function extractFrame(input: string, atSec: number, output: string): Promise<void> {
   await ffmpeg(['-ss', atSec.toFixed(2), '-i', input, '-frames:v', '1', '-q:v', '3', output], 60_000);
 }
+
+// ---------------------------------------------------------------------------
+// Final assembly: transitions + subtitles + background music in one pass
+// ---------------------------------------------------------------------------
+
+export interface AssembleSpec {
+  scenes: { file: string; durationMs: number }[];
+  /** Cross-fade length between scenes (0 = hard cuts). */
+  transitionMs: number;
+  subtitles: { file: string; fontsDir: string | null; style: string } | null;
+  /** Background music (looped, faded, ducked under the narration). Volume 0–100. */
+  music: { file: string; volume: number } | null;
+  output: string;
+}
+
+/** Effective on-screen length of each scene once transitions overlap them (used for subtitle timing). */
+export function effectiveDurations(durationsMs: number[], transitionMs: number): number[] {
+  return durationsMs.map((d, i) => (i < durationsMs.length - 1 ? d - transitionMs : d));
+}
+
+/** Pure: the ffmpeg argv for the final assembly (exported for tests). */
+export function assembleArgs(spec: AssembleSpec): { args: string[]; totalMs: number } {
+  const n = spec.scenes.length;
+  if (n === 0) throw new Error('nothing to assemble');
+  const shortest = Math.min(...spec.scenes.map((s) => s.durationMs));
+  // Transitions must be shorter than half of the shortest scene.
+  const T = n > 1 ? Math.max(0, Math.min(spec.transitionMs, Math.floor(shortest / 2) - 50)) : 0;
+  const totalMs = spec.scenes.reduce((sum, s) => sum + s.durationMs, 0) - (n - 1) * T;
+  const D = (totalMs / 1000).toFixed(3);
+  const t = (T / 1000).toFixed(3);
+  const args: string[] = [];
+  const filters: string[] = [];
+  spec.scenes.forEach((s, i) => {
+    args.push('-i', s.file);
+    filters.push(`[${i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p[v${i}]`, `[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`);
+  });
+  let v = 'v0';
+  let a = 'a0';
+  if (n > 1 && T > 0) {
+    let length = spec.scenes[0]!.durationMs;
+    for (let i = 1; i < n; i++) {
+      const offset = ((length - T) / 1000).toFixed(3);
+      filters.push(`[${v}][v${i}]xfade=transition=fade:duration=${t}:offset=${offset}[vx${i}]`, `[${a}][a${i}]acrossfade=d=${t}:c1=tri:c2=tri[ax${i}]`);
+      v = `vx${i}`;
+      a = `ax${i}`;
+      length += spec.scenes[i]!.durationMs - T;
+    }
+  } else if (n > 1) {
+    filters.push(`${spec.scenes.map((_, i) => `[v${i}][a${i}]`).join('')}concat=n=${n}:v=1:a=1[vc][ac]`);
+    v = 'vc';
+    a = 'ac';
+  }
+  if (spec.subtitles) {
+    const fonts = spec.subtitles.fontsDir ? `:fontsdir='${escapeFilterPath(spec.subtitles.fontsDir)}'` : '';
+    filters.push(`[${v}]subtitles='${escapeFilterPath(spec.subtitles.file)}'${fonts}:force_style='${spec.subtitles.style}'[vs]`);
+    v = 'vs';
+  }
+  if (spec.music && spec.music.volume > 0) {
+    args.push('-stream_loop', '-1', '-i', spec.music.file);
+    const m = n;
+    const vol = (Math.min(100, Math.max(0, spec.music.volume)) / 100).toFixed(2);
+    const fadeOut = Math.max(0, totalMs / 1000 - 2).toFixed(3);
+    filters.push(
+      `[${m}:a]aresample=44100,aformat=channel_layouts=stereo,volume=${vol},afade=t=in:st=0:d=1,afade=t=out:st=${fadeOut}:d=2[mus]`,
+      `[${a}]asplit=2[nar][key]`,
+      // Duck the music while the narrator speaks.
+      `[mus][key]sidechaincompress=threshold=0.03:ratio=6:attack=15:release=400[duck]`,
+      `[nar][duck]amix=inputs=2:duration=first:normalize=0[am]`,
+    );
+    a = 'am';
+  }
+  return {
+    args: [...args, '-filter_complex', filters.join(';'), '-map', `[${v}]`, '-map', `[${a}]`, '-t', D, ...ENCODE, spec.output],
+    totalMs,
+  };
+}
+
+export async function assembleVideo(spec: AssembleSpec): Promise<number> {
+  const { args, totalMs } = assembleArgs(spec);
+  await ffmpeg(args, 20 * 60_000);
+  return totalMs;
+}

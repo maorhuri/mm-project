@@ -18,7 +18,8 @@ export class MetaApiError extends AppError {
   }
   /** OAuthException 190 = invalid/expired token; 10/200-299 = permission errors. */
   get isAuthError(): boolean {
-    return this.fbCode === 190 || this.fbType === 'OAuthException';
+    // 190 = invalid / expired token. Other OAuthExceptions (permissions, rate limits) are not an expired login.
+    return this.fbCode === 190;
   }
 }
 

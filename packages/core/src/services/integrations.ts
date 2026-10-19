@@ -15,7 +15,8 @@ export interface IntegrationCatalogEntry {
 export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
   { provider: 'openai', kind: 'AI_TEXT', label: 'OpenAI — טקסט, תמונות וקריינות', phase: 2, scope: 'org' },
   { provider: 'anthropic', kind: 'AI_TEXT', label: 'Anthropic Claude — טקסט, QA ואסטרטגיה', phase: 2, scope: 'org' },
-  { provider: 'google', kind: 'AI_TEXT', label: 'Google Gemini — טקסט, תמונות ווידאו (Veo)', phase: 2, scope: 'org' },
+  { provider: 'google', kind: 'AI_TEXT', label: 'Google Gemini — טקסט, תמונות ווידאו (Veo 3.1)', phase: 2, scope: 'org' },
+  { provider: 'fal', kind: 'AI_VIDEO', label: 'fal.ai — דמויות מדברות (Kling AI Avatar)', phase: 3, scope: 'org' },
   { provider: 'meta', kind: 'META', label: 'Meta — Facebook Page / Instagram / Ads', phase: 4, scope: 'brand' },
   { provider: 'google_ads', kind: 'GOOGLE_ADS', label: 'Google Ads', phase: 5, scope: 'brand' },
   { provider: 'linkedin', kind: 'LINKEDIN', label: 'LinkedIn Pages', phase: 6, scope: 'brand' },
@@ -34,7 +35,7 @@ export interface IntegrationStatus extends IntegrationCatalogEntry {
   acceptsApiKey: boolean;
 }
 
-const API_KEY_PROVIDERS = new Set(['openai', 'anthropic', 'google']);
+const API_KEY_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'fal']);
 
 /**
  * Catalog merged with real connection rows. Org-wide rows (brandId null) and

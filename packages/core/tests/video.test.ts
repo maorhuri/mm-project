@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../src/errors';
 import { createProduct } from '../src/services/brands';
 import { uploadMedia } from '../src/services/media';
 import { createCharacter } from '../src/services/characters';
-import { planClipFit, sceneFfmpegArgs } from '../src/media/ffmpeg';
+import { assembleArgs, effectiveDurations, planClipFit, sceneFfmpegArgs } from '../src/media/ffmpeg';
 import { splitForMotion } from '../src/creative/document';
 import { buildDocument, buildReelOverlay, subtitleBand } from '../src/creative/templates';
 import {
@@ -143,6 +143,38 @@ describe('motion composition (pure)', () => {
     expect(loop[loop.indexOf('-filter_complex') + 1]).toContain('[0:a]aresample=44100,apad[a]');
   });
 
+  it('assembles scenes with cross-fades, subtitles and ducked music in one pass', () => {
+    const { args, totalMs } = assembleArgs({
+      scenes: [
+        { file: '/tmp/s1.mp4', durationMs: 4000 },
+        { file: '/tmp/s2.mp4', durationMs: 5000 },
+        { file: '/tmp/s3.mp4', durationMs: 3000 },
+      ],
+      transitionMs: 350,
+      subtitles: { file: "/tmp/it's.srt", fontsDir: '/fonts', style: 'FontName=Heebo,FontSize=15' },
+      music: { file: '/tmp/m.mp3', volume: 18 },
+      output: '/tmp/out.mp4',
+    });
+    expect(totalMs).toBe(12000 - 700);
+    const graph = args[args.indexOf('-filter_complex') + 1]!;
+    expect(graph).toContain('xfade=transition=fade:duration=0.350:offset=3.650[vx1]');
+    expect(graph).toContain('xfade=transition=fade:duration=0.350:offset=8.300[vx2]');
+    expect(graph).toContain('acrossfade=d=0.350');
+    expect(graph).toContain("subtitles='/tmp/it\\'s.srt'");
+    expect(graph).toContain('sidechaincompress');
+    expect(graph).toContain('volume=0.18');
+    expect(args.slice(args.indexOf('/tmp/m.mp3') - 3, args.indexOf('/tmp/m.mp3') + 1)).toEqual(['-stream_loop', '-1', '-i', '/tmp/m.mp3']);
+    expect(args[args.indexOf('-t') + 1]).toBe('11.300');
+    expect(effectiveDurations([4000, 5000, 3000], 350)).toEqual([3650, 4650, 3000]);
+
+    const cuts = assembleArgs({ scenes: [{ file: 'a', durationMs: 2000 }, { file: 'b', durationMs: 2000 }], transitionMs: 0, subtitles: null, music: null, output: 'o' });
+    expect(cuts.totalMs).toBe(4000);
+    expect(cuts.args[cuts.args.indexOf('-filter_complex') + 1]).toContain('concat=n=2:v=1:a=1');
+    const single = assembleArgs({ scenes: [{ file: 'a', durationMs: 2000 }], transitionMs: 350, subtitles: null, music: null, output: 'o' });
+    expect(single.totalMs).toBe(2000);
+    expect(single.args[single.args.indexOf('-filter_complex') + 1]).not.toContain('xfade');
+  });
+
   it('splits a template into a moving background and a static text/logo overlay', () => {
     const kit = { colors: { primary: '#123456' }, fonts: {}, logoMediaId: '0191f3a2-0000-7000-8000-000000000001' };
     const photo = buildDocument({ aspect: 'R9X16', copy: { headline: 'כותרת' }, kit, template: 'photo', backgroundMediaId: '0191f3a2-0000-7000-8000-000000000002' });
@@ -221,5 +253,34 @@ describe('scene types: validation and estimates', () => {
     expect(detail.estimate.videoIls).toBe(0);
     expect(detail.estimate.needsApproval).toBe(false);
     expect(detail.characters.map((c) => c.name)).toEqual(['רובי']);
+  });
+});
+
+describe('one-click production', () => {
+  const started: string[] = [];
+  beforeEach(() => {
+    started.length = 0;
+    setVideoRenderDispatcher(async (_ctx, projectId) => {
+      started.push(projectId);
+    });
+  });
+  afterEach(() => setVideoRenderDispatcher(null));
+
+  it('brief → script → motion scenes with the character presenting → render started', async () => {
+    const { owner, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const image = await uploadMedia(ctx, { data: await pngBuffer(), originalName: 'r.png', mimeType: 'image/png' });
+    const robot = await createCharacter(ctx, { name: 'רובי', imageMediaId: image.id, voice: 'nova' });
+    const { autoProduceVideo } = await import('../src/services/video');
+    const res = await autoProduceVideo(ctx, { brief: 'רילס על מעבר אתר בלי השבתה', aspect: 'R9X16', characterId: robot.id, sceneCount: 4, targetSeconds: 30, videoTier: 'flagship' });
+    expect(res.approvalRequired).toBe(false);
+    expect(started).toEqual([res.project.id]);
+    const detail = await getVideoProject(ctx, res.project.id);
+    expect(detail.project.videoTier).toBe('flagship');
+    expect(detail.project.status).toBe('RENDERING');
+    const kinds = detail.scenes.map((s) => s.visualKind);
+    // Mock script returns 2 scenes in tests: opening and closing are the talking character.
+    expect(kinds.every((k) => k === 'AVATAR')).toBe(true);
+    expect(detail.scenes.every((s) => s.characterId === robot.id)).toBe(true);
   });
 });

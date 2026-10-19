@@ -199,7 +199,7 @@ export class AiOutputInvalidError extends AppError {
 
 /** Providers that can serve motion clips / talking avatars, in preference order (configured with the catalog). */
 export const VIDEO_PROVIDERS: AiProviderId[] = ['google'];
-export const AVATAR_PROVIDERS: AiProviderId[] = ['google'];
+export const AVATAR_PROVIDERS: AiProviderId[] = ['fal'];
 
 export interface TaskDefaults {
   kind: AiModelKind;

@@ -22,6 +22,7 @@ const KIND_BY_PROVIDER: Record<AiProviderId, ProviderKind> = {
   openai: 'AI_TEXT',
   anthropic: 'AI_TEXT',
   google: 'AI_TEXT',
+  fal: 'AI_VIDEO',
 };
 
 /** Resolve the API key for a provider: brand override → org-wide row → environment variable. */
@@ -46,6 +47,7 @@ export async function getProviderApiKey(orgId: string, provider: AiProviderId, b
     openai: process.env.OPENAI_API_KEY || undefined,
     anthropic: process.env.ANTHROPIC_API_KEY || undefined,
     google: process.env.GOOGLE_AI_API_KEY || undefined,
+    fal: process.env.FAL_KEY || undefined,
   };
   void env;
   return fromEnv[provider] ?? null;
@@ -136,6 +138,15 @@ export async function testProviderKey(provider: AiProviderId, apiKey: string, fe
       if (status >= 400) return done(false, [], errorMessage(body, status));
       const data = (body as { data?: { id: string }[] }).data ?? [];
       return done(true, data.map((m) => m.id).slice(0, 40), null);
+    }
+    if (provider === 'fal') {
+      // fal has no public model listing per key; the usage endpoint rejects invalid keys with 401.
+      const res = await fetcher('https://api.fal.ai/v1/models/usage', { headers: { authorization: `Key ${apiKey}` } });
+      status = res.status;
+      body = await res.json().catch(() => null);
+      if (status === 401) return done(false, [], errorMessage(body, status));
+      if (status >= 500) return done(false, [], errorMessage(body, status));
+      return done(true, ['fal-ai/kling-video/ai-avatar/v2/pro', 'fal-ai/kling-video/ai-avatar/v2/standard'], null);
     }
     const res = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${encodeURIComponent(apiKey)}`, { headers: {} });
     status = res.status;

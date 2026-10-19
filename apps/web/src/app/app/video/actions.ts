@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  autoProduceVideo,
+  autoVideoSchema,
   createVideoProject,
   deleteVideoProject,
   generateVideoScript,
@@ -81,6 +83,9 @@ export async function updateSettingsAction(projectId: string, prev: ActionState,
       motionStills: formData.get('motionStills') === 'on',
       videoTier: str(formData, 'videoTier'),
       ambientAudio: formData.get('ambientAudio') === 'on',
+      transitions: formData.get('transitions') === 'on',
+      musicMediaId: optionalStr(formData, 'musicMediaId'),
+      musicVolume: numberOrNull(formData, 'musicVolume') ?? 18,
     });
     await updateVideoSettings(ctx, projectId, input);
     refresh(projectId);
@@ -125,4 +130,25 @@ export async function deleteVideoProjectAction(projectId: string): Promise<Actio
     refresh();
     return { message: 'הפרויקט נמחק' };
   });
+}
+
+export async function autoVideoAction(prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await requireBrandContext();
+    const input = autoVideoSchema.parse({
+      brief: str(formData, 'brief'),
+      aspect: str(formData, 'aspect') || undefined,
+      productId: optionalStr(formData, 'productId'),
+      characterId: optionalStr(formData, 'characterId'),
+      sceneCount: numberOrNull(formData, 'sceneCount') ?? undefined,
+      targetSeconds: numberOrNull(formData, 'targetSeconds') ?? undefined,
+      videoTier: str(formData, 'videoTier') || undefined,
+      voice: optionalStr(formData, 'voice') ?? undefined,
+    });
+    const result = await autoProduceVideo(ctx, input);
+    refresh(result.project.id);
+    revalidatePath('/app/approvals');
+    revalidatePath('/app', 'layout');
+    return { message: result.message, data: { id: result.project.id, approvalRequired: result.approvalRequired } };
+  }, formData, prev);
 }

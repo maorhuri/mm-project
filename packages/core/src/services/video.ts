@@ -34,7 +34,7 @@ import type { ComposeKit } from '../creative/templates';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { JOBS, QUEUES, getQueue } from '../jobs/queues';
 import { logger } from '../logger';
-import { composeScene, escapeFilterPath, extractFrame, ffmpeg, ffprobeDurationMs, probeMedia } from '../media/ffmpeg';
+import { assembleVideo, composeScene, effectiveDurations, extractFrame, ffprobeDurationMs, probeMedia } from '../media/ffmpeg';
 import type { SceneBackground, StillMotion } from '../media/ffmpeg';
 import type { BrandContext } from '../tenancy/context';
 import { assertBrandRole } from '../tenancy/context';
@@ -68,6 +68,8 @@ const CHARS_PER_SECOND = 14;
 /** Silence after each scene's narration. */
 const SCENE_TAIL_MS = 500;
 const DEFAULT_NARRATOR = 'Warm, clear Hebrew narrator for a short marketing video. Natural pace.';
+/** Cross-fade between scenes. */
+const TRANSITION_MS = 350;
 const CLIP_NEGATIVE = 'on-screen text, captions, subtitles, letters, words, logos, watermark, distorted faces, extra fingers, blurry';
 
 // ---------------------------------------------------------------------------
@@ -100,10 +102,22 @@ export async function updateVideoSettings(ctx: BrandContext, projectId: string, 
   assertBrandRole(ctx, 'EDITOR');
   const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
   if (!project) throw new NotFoundError('video project');
-  if (project.status === 'RENDERING') throw new ConflictError('הסרטון מרונדר כעת');
+  if (isActivelyRendering(project)) throw new ConflictError('הסרטון מרונדר כעת');
+  if (input.musicMediaId) {
+    const music = await getMedia(ctx, input.musicMediaId);
+    if (music.kind !== 'AUDIO') throw new ValidationError('יש לבחור קובץ שמע', [{ path: 'musicMediaId', message: 'לא קובץ שמע' }]);
+  }
   const updated = await ctx.db.videoProject.update({
     where: { id: projectId },
-    data: { voice: input.voice, motionStills: input.motionStills, videoTier: input.videoTier, ambientAudio: input.ambientAudio },
+    data: {
+      voice: input.voice,
+      motionStills: input.motionStills,
+      videoTier: input.videoTier,
+      ambientAudio: input.ambientAudio,
+      transitions: input.transitions,
+      musicMediaId: input.musicMediaId ?? null,
+      musicVolume: input.musicVolume,
+    },
   });
   await auditFromContext(ctx, { action: 'video.settings', entityType: 'video_project', entityId: projectId, before: { voice: project.voice, motionStills: project.motionStills, videoTier: project.videoTier, ambientAudio: project.ambientAudio }, after: input });
   return updated;
@@ -133,7 +147,7 @@ export async function deleteVideoProject(ctx: BrandContext, projectId: string): 
   assertBrandRole(ctx, 'BRAND_ADMIN');
   const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
   if (!project) throw new NotFoundError('video project');
-  if (project.status === 'RENDERING') throw new ConflictError('הסרטון מרונדר כעת');
+  if (isActivelyRendering(project)) throw new ConflictError('הסרטון מרונדר כעת');
   await ctx.db.videoProject.delete({ where: { id: projectId } });
   await auditFromContext(ctx, { action: 'video.project.delete', entityType: 'video_project', entityId: projectId, before: { title: project.title } });
 }
@@ -318,6 +332,7 @@ const scriptOutputSchema = z.object({
         narration: z.string().min(1).max(600),
         onScreenText: z.string().max(160).nullish(),
         visualPrompt: z.string().max(800).nullish(),
+        motionPrompt: z.string().max(500).nullish(),
         claims: z.array(z.object({ text: z.string().max(400), factIds: z.array(z.string().max(24)).default([]) })).default([]),
       }),
     )
@@ -326,7 +341,8 @@ const scriptOutputSchema = z.object({
 
 const SCRIPT_FORMAT = `
 ## פורמט הפלט (JSON בלבד)
-{"title":"שם הסרטון","scenes":[{"narration":"משפט קריינות טבעי בעברית, עד 25 מילים","onScreenText":"עד 7 מילים על המסך","visualPrompt":"English visual description for a background image: scene, mood, colours. No text.","claims":[{"text":"משפט עובדתי","factIds":["P1.F1"]}]}]}
+{"title":"שם הסרטון","scenes":[{"narration":"משפט קריינות טבעי בעברית, עד 20 מילים (כ-6 שניות)","onScreenText":"עד 6 מילים על המסך","visualPrompt":"English cinematic shot description for a premium ad: subject, setting, lighting, lens, colour grade. No text, no logos.","motionPrompt":"English camera move + action, e.g. 'slow dolly-in while the developer smiles and turns to camera'","claims":[{"text":"משפט עובדתי","factIds":["P1.F1"]}]}]}
+- כל סצנה היא שוט פרסומי ברמה של סרט: ויז'ואל ספציפי ומרשים, לא קלישאות כלליות; התנועה ב-motionPrompt דינמית ומשרתת את המסר.
 - הסצנה הראשונה היא הוק (3 שניות), האחרונה קריאה לפעולה.
 - הקריינות נשמעת בקול רם: ללא סוגריים, ללא קיצורים, מספרים במילים כשזה טבעי.
 - onScreenText קצר וחד, לא חוזר מילה במילה על הקריינות.`;
@@ -345,7 +361,7 @@ export async function generateVideoScript(ctx: BrandContext, projectId: string, 
   assertBrandRole(ctx, 'EDITOR');
   const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
   if (!project) throw new NotFoundError('video project');
-  if (project.status === 'RENDERING') throw new ConflictError('הסרטון מרונדר כעת');
+  if (isActivelyRendering(project)) throw new ConflictError('הסרטון מרונדר כעת');
   const product = project.productId ? await ctx.db.brandProduct.findUnique({ where: { id: project.productId } }) : null;
   const packet = await buildFactsPacket(ctx);
   const prompt = [
@@ -393,8 +409,9 @@ export async function generateVideoScript(ctx: BrandContext, projectId: string, 
           order: i + 1,
           narration: s.narration.trim(),
           onScreenText: s.onScreenText?.trim() || null,
-          visualKind: 'CARD',
+          visualKind: input.defaultKind ?? 'CARD',
           visualPrompt: s.visualPrompt?.trim() || null,
+          motionPrompt: s.motionPrompt?.trim() || null,
         },
       }),
     );
@@ -432,7 +449,7 @@ export async function updateVideoScene(ctx: BrandContext, sceneId: string, input
   assertBrandRole(ctx, 'EDITOR');
   const scene = await ctx.db.videoScene.findUnique({ where: { id: sceneId }, include: { project: true } });
   if (!scene) throw new NotFoundError('scene');
-  if (scene.project.status === 'RENDERING') throw new ConflictError('הסרטון מרונדר כעת');
+  if (isActivelyRendering(scene.project)) throw new ConflictError('הסרטון מרונדר כעת');
   const kind = input.visualKind;
   let mediaId: string | null = null;
   if (kind === 'MEDIA') {
@@ -487,6 +504,11 @@ export async function updateVideoScene(ctx: BrandContext, sceneId: string, input
 /** A render that has not reported progress for this long is considered dead (worker crash) and may be restarted. */
 export const STALE_RENDER_MS = 30 * 60_000;
 
+/** RENDERING that still reports progress; a silent render (worker died) no longer locks the project. */
+export function isActivelyRendering(project: Pick<VideoProject, 'status' | 'updatedAt'>): boolean {
+  return project.status === 'RENDERING' && project.updatedAt.getTime() >= Date.now() - STALE_RENDER_MS;
+}
+
 type RenderDispatcher = (ctx: BrandContext, projectId: string) => Promise<void>;
 const defaultDispatcher: RenderDispatcher = async (ctx, projectId) => {
   await getQueue(QUEUES.video).add(
@@ -518,8 +540,7 @@ async function dispatchRender(ctx: BrandContext, projectId: string, renderApprov
 export async function startVideoRender(ctx: BrandContext, projectId: string): Promise<VideoProject> {
   assertBrandRole(ctx, 'EDITOR');
   const { project, scenes, estimate, characters } = await getVideoProject(ctx, projectId);
-  const stale = project.status === 'RENDERING' && project.updatedAt.getTime() < Date.now() - STALE_RENDER_MS;
-  if (project.status === 'RENDERING' && !stale) throw new ConflictError('הסרטון כבר מרונדר');
+  if (isActivelyRendering(project)) throw new ConflictError('הסרטון כבר מרונדר');
   if (scenes.length === 0) throw new ConflictError('אין סצנות — צרו תסריט תחילה');
   const qa = project.qa as unknown as QaReport | null;
   if (qa?.status === 'BLOCKED') throw new ConflictError('בקרת האיכות חסמה את התסריט — תקנו את הסצנות המסומנות');
@@ -559,7 +580,7 @@ registerApprovalHandler('video_render', async (ctx, approval) => {
   if (approval.status !== 'APPROVED') return;
   const projectId = approval.subjectId.split(':')[0] ?? '';
   const project = await ctx.db.videoProject.findUnique({ where: { id: projectId } });
-  if (!project || project.status === 'RENDERING') return;
+  if (!project || isActivelyRendering(project)) return;
   const scenes = await ctx.db.videoScene.findMany({ where: { projectId }, orderBy: { order: 'asc' } });
   if (approval.subjectId !== `${projectId}:${renderConfigHash(project, scenes)}`) return;
   await dispatchRender(ctx, projectId, approval.id, Number(approval.estimatedCostIls ?? 0));
@@ -907,20 +928,29 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
       });
     }
 
-    await progress(88, 'מחבר סצנות');
-    const listFile = path.join(dir, 'list.txt');
-    await writeFile(listFile, sceneFiles.map((s) => `file '${s.video.replace(/'/g, "'\\''")}'`).join('\n'));
-    const joined = path.join(dir, 'joined.mp4');
-    await ffmpeg(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', joined]);
-
-    await progress(92, 'כתוביות');
-    const srt = buildSrt(srtScenes);
+    await progress(88, 'מחבר סצנות, מעברים, כתוביות ומוזיקה');
+    const transitionMs = project.transitions ? TRANSITION_MS : 0;
+    const effective = effectiveDurations(sceneFiles.map((s) => s.durationMs), sceneFiles.length > 1 ? transitionMs : 0);
+    const srt = buildSrt(srtScenes.map((s, k) => ({ narration: s.narration, durationMs: effective[k]! })));
     const srtFile = path.join(dir, 'subs.srt');
     await writeFile(srtFile, srt, 'utf8');
-    const fonts = fontsDir();
+    let music: { file: string; volume: number } | null = null;
+    if (project.musicMediaId && project.musicVolume > 0) {
+      try {
+        const { file } = await downloadMedia(ctx, project.musicMediaId, path.join(dir, 'music'));
+        music = { file, volume: project.musicVolume };
+      } catch (err) {
+        logger.warn({ err, projectId }, 'background music unavailable — rendering without it');
+      }
+    }
     const final = path.join(dir, 'final.mp4');
-    const filter = `subtitles='${escapeFilterPath(srtFile)}'${fonts ? `:fontsdir='${escapeFilterPath(fonts)}'` : ''}:force_style='${subtitleStyle(project.aspect)}'`;
-    await ffmpeg(['-i', joined, '-vf', filter, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', final]);
+    await assembleVideo({
+      scenes: sceneFiles.map((s) => ({ file: s.video, durationMs: s.durationMs })),
+      transitionMs,
+      subtitles: { file: srtFile, fontsDir: fontsDir(), style: subtitleStyle(project.aspect) },
+      music,
+      output: final,
+    });
     const durationMs = await ffprobeDurationMs(final);
 
     await progress(97, 'שומר');
@@ -953,20 +983,78 @@ export async function requestVideoApproval(ctx: BrandContext, projectId: string)
     title: `סרטון: ${project.title}`,
     summary: project.goal,
     subjectType: 'video_project',
-    subjectId: project.id,
-    payload: { outputMediaId: project.outputMediaId, durationMs: project.durationMs, costIls: Number(project.costIls) },
+    // Bound to the rendered file: a new render is a new subject and needs its own approval.
+    subjectId: `${project.id}:${project.outputMediaId}`,
+    payload: { projectId: project.id, outputMediaId: project.outputMediaId, durationMs: project.durationMs, costIls: Number(project.costIls) },
     estimatedCostIls: Number(project.costIls),
   });
   return ctx.db.videoProject.update({ where: { id: projectId }, data: { approvalId: approval.id } });
 }
 
 registerApprovalHandler('video_project', async (ctx, approval) => {
-  const project = await ctx.db.videoProject.findUnique({ where: { id: approval.subjectId } });
+  const [projectId, outputMediaId] = approval.subjectId.split(':');
+  const project = await ctx.db.videoProject.findUnique({ where: { id: projectId ?? '' } });
   if (!project) return;
   if (approval.status === 'APPROVED') {
     if (project.status !== 'READY' || !project.outputMediaId) throw new ConflictError('הסרטון אינו מוכן');
+    if (outputMediaId !== project.outputMediaId) throw new ConflictError('הסרטון רונדר מחדש אחרי בקשת האישור — יש לשלוח את הגרסה החדשה לאישור');
     await ctx.db.videoProject.update({ where: { id: project.id }, data: { status: 'APPROVED' } });
   } else if (approval.status === 'REJECTED' || approval.status === 'CHANGES_REQUESTED') {
     await ctx.db.videoProject.update({ where: { id: project.id }, data: { approvalId: null } });
   }
 });
+
+// ---------------------------------------------------------------------------
+// One-click production: brief → script → AI motion scenes → render
+// ---------------------------------------------------------------------------
+
+export interface AutoProduceInput {
+  brief: string;
+  aspect: VideoProject['aspect'];
+  productId?: string | null;
+  characterId?: string | null;
+  sceneCount: number;
+  targetSeconds: number;
+  videoTier: 'economy' | 'balanced' | 'flagship';
+  voice?: string;
+}
+
+/**
+ * The fast path: everything from one brief. Scenes are real AI video when a video provider is
+ * connected (AI images with camera motion otherwise); with a character, it presents the opening
+ * and the call to action as a talking presenter. The render starts (or asks for approval) at once.
+ */
+export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInput): Promise<{ project: VideoProject; approvalRequired: boolean; message: string }> {
+  assertBrandRole(ctx, 'EDITOR');
+  const character = input.characterId ? await ctx.db.brandCharacter.findUnique({ where: { id: input.characterId } }) : null;
+  if (input.characterId && (!character || !character.isActive)) throw new ValidationError('הדמות לא נמצאה', [{ path: 'characterId', message: 'לא נמצאה' }]);
+  const title = input.brief.replace(/\s+/g, ' ').trim().slice(0, 60) || 'סרטון';
+  const project = await createVideoProject(ctx, { title, goal: input.brief.slice(0, 500), productId: input.productId ?? null, aspect: input.aspect, voice: (input.voice ?? 'alloy') as VideoProjectInput['voice'] });
+  await ctx.db.videoProject.update({ where: { id: project.id }, data: { videoTier: input.videoTier, motionStills: true, transitions: true } });
+  const tier = input.videoTier as AiTier;
+  const [videoModel, avatarModel] = await Promise.all([resolveClipModel(ctx, 'video', tier), character ? resolveClipModel(ctx, 'avatar', tier) : null]);
+  const motion = videoModel ? 'AI_VIDEO' : 'AI_IMAGE';
+  const { scenes } = await generateVideoScript(ctx, project.id, {
+    sceneCount: input.sceneCount,
+    targetSeconds: input.targetSeconds,
+    extra: [input.brief, character ? `הדמות "${character.name}" (${character.description ?? ''}) פותחת את הסרטון וסוגרת אותו בפנייה ישירה למצלמה.` : ''].filter(Boolean).join('\n'),
+    defaultKind: motion,
+  });
+  if (character) {
+    const speaking = avatarModel ? 'AVATAR' : motion;
+    const ids = [scenes[0]?.id, scenes.length > 1 ? scenes[scenes.length - 1]?.id : undefined].filter((x): x is string => Boolean(x));
+    await ctx.db.videoScene.updateMany({ where: { id: { in: ids } }, data: { visualKind: speaking, characterId: character.id } });
+    if (motion === 'AI_VIDEO') await ctx.db.videoScene.updateMany({ where: { projectId: project.id, id: { notIn: ids } }, data: { characterId: character.id } });
+  }
+  const notes: string[] = [];
+  if (!videoModel) notes.push('אין ספק וידאו מחובר — הסצנות נוצרו כתמונות AI עם תנועת מצלמה. חברו Google Gemini (Veo 3.1) לאנימציה אמיתית');
+  if (character && !avatarModel) notes.push('אין ספק דמויות מדברות — חברו fal.ai לסנכרון שפתיים');
+  try {
+    await startVideoRender(ctx, project.id);
+    return { project, approvalRequired: false, message: ['הסרטון בהפקה', ...notes].join('. ') };
+  } catch (err) {
+    if (err instanceof AiApprovalRequiredError) return { project, approvalRequired: true, message: [`${err.message}. ההפקה תתחיל אוטומטית עם האישור`, ...notes].join('. ') };
+    if (err instanceof ConflictError) return { project, approvalRequired: false, message: [`התסריט מוכן אך הרינדור לא התחיל: ${err.message}`, ...notes].join('. ') };
+    throw err;
+  }
+}

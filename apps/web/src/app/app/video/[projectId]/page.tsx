@@ -15,7 +15,11 @@ export default async function VideoProjectPage({ params }: { params: Promise<{ p
     if (isAppError(err) && err.status === 404) notFound();
     throw err;
   }
-  const [images, videos] = await Promise.all([listMedia(ctx, { kind: 'IMAGE', page: 1, pageSize: 120 }), listMedia(ctx, { kind: 'VIDEO', page: 1, pageSize: 60 })]);
+  const [images, videos, audio] = await Promise.all([
+    listMedia(ctx, { kind: 'IMAGE', page: 1, pageSize: 120 }),
+    listMedia(ctx, { kind: 'VIDEO', page: 1, pageSize: 60 }),
+    listMedia(ctx, { kind: 'AUDIO', page: 1, pageSize: 100 }),
+  ]);
   const toPicker = (m: (typeof images.items)[number], kind: 'IMAGE' | 'VIDEO') => ({ id: m.id, title: m.title, originalName: m.originalName, width: m.width, height: m.height, tags: m.tags, kind });
   const { project } = detail;
   return (
@@ -29,6 +33,7 @@ export default async function VideoProjectPage({ params }: { params: Promise<{ p
       characters={detail.characters.filter((c) => c.isActive).map((c) => ({ id: c.id, name: c.name, imageMediaId: c.imageMediaId, voice: c.voice }))}
       images={images.items.filter((m) => m.mimeType !== 'image/svg+xml').map((m) => toPicker(m, 'IMAGE'))}
       videos={videos.items.map((m) => toPicker(m, 'VIDEO'))}
+      musicOptions={audio.items.filter((m) => !m.tags.includes('narration')).map((m) => ({ id: m.id, title: m.title ?? m.originalName }))}
       singleRunCapIls={getConfig().AI_SINGLE_RUN_MAX_ILS}
     />
   );

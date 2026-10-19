@@ -46,6 +46,7 @@ interface Props {
   characters: CharacterOption[];
   images: PickerImage[];
   videos: PickerImage[];
+  musicOptions: { id: string; title: string }[];
   singleRunCapIls: number;
 }
 
@@ -66,7 +67,7 @@ const TIERS = [
   { value: 'flagship', label: 'פרימיום — האיכות הגבוהה ביותר' },
 ];
 
-export function VideoWorkspace({ brandId, canEdit, project, scenes, product, estimate, characters, images, videos, singleRunCapIls }: Props) {
+export function VideoWorkspace({ brandId, canEdit, project, scenes, product, estimate, characters, images, videos, musicOptions, singleRunCapIls }: Props) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const staleRender = project.status === 'RENDERING' && Date.now() - new Date(project.updatedAt).getTime() > 30 * 60_000;
@@ -245,7 +246,7 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
               {qa?.status === 'BLOCKED' ? <p className="text-xs text-destructive">בקרת האיכות חסמה את התסריט — תקנו את הסצנות המסומנות.</p> : null}
             </CardContent>
           </Card>
-          {canEdit && !rendering ? <SettingsForm project={project} /> : null}
+          {canEdit && !rendering ? <SettingsForm brandId={brandId} project={project} musicOptions={musicOptions} /> : null}
           <QaPanel report={qa} />
           <Card>
             <CardHeader>
@@ -285,8 +286,9 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SettingsForm({ project }: { project: ProjectDto }) {
+function SettingsForm({ brandId, project, musicOptions }: { brandId: string; project: ProjectDto; musicOptions: { id: string; title: string }[] }) {
   const [state, action] = useActionState(updateSettingsAction.bind(null, project.id), idleState);
+  const [music, setMusic] = useState<string>(project.musicMediaId ?? '');
   const router = useRouter();
   useEffect(() => {
     if (state.status === 'success') {
@@ -329,6 +331,37 @@ function SettingsForm({ project }: { project: ProjectDto }) {
             <input type="checkbox" name="ambientAudio" defaultChecked={formChecked(state, 'ambientAudio', project.ambientAudio)} className="size-4 rounded border-input" />
             סאונד אווירה מקליפי הווידאו (מתחת לקריינות)
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="transitions" defaultChecked={formChecked(state, 'transitions', project.transitions)} className="size-4 rounded border-input" />
+            מעברים רכים בין סצנות
+          </label>
+          <Field label="מוזיקת רקע (מספריית המדיה — MP3 / WAV / M4A)" name="musicMediaId" error={fieldError(state, 'musicMediaId')}>
+            <Select id="musicMediaId" name="musicMediaId" value={music} onChange={(e) => setMusic(e.target.value)}>
+              <option value="">— ללא מוזיקה —</option>
+              {musicOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {music ? (
+            <>
+              <audio controls src={mediaUrl(brandId, music)} className="w-full" />
+              <Field label="עוצמת המוזיקה (המוזיקה יורדת אוטומטית כשהקריין מדבר)" name="musicVolume" error={fieldError(state, 'musicVolume')}>
+                <Select id="musicVolume" name="musicVolume" defaultValue={formValue(state, 'musicVolume', project.musicVolume)}>
+                  {[8, 12, 18, 25, 35, 50].map((v) => (
+                    <option key={v} value={v}>
+                      {v}%
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          ) : (
+            <input type="hidden" name="musicVolume" value={project.musicVolume} />
+          )}
+          {musicOptions.length === 0 ? <p className="text-xs text-muted-foreground">אין קבצי מוזיקה בספרייה — העלו קובץ שמע (עם רישיון שימוש) בספריית המדיה.</p> : null}
           <FormMessage state={state} />
           <SubmitButton size="sm" variant="outline" pendingText="שומר…">
             <Save /> שמירת הגדרות

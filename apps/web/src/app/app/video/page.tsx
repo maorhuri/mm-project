@@ -1,20 +1,21 @@
 import Link from 'next/link';
 import { Clapperboard, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { listProducts, listVideoProjects } from '@mm/core';
+import { listCharacters, listProducts, listVideoProjects, resolveClipModel } from '@mm/core';
 import { ASPECTS } from '@mm/core/creative';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { VideoStatusBadge } from '@/components/status-badges';
 import { requireBrandContext } from '@/lib/brand';
 import { relativeTime } from '@/lib/format';
+import { AutoVideoForm } from './auto-video-form';
 import { CreateVideoDialog } from './create-video-dialog';
 
 export const metadata = { title: 'סטודיו וידאו' };
 
 export default async function VideoPage() {
   const ctx = await requireBrandContext();
-  const [projects, products] = await Promise.all([listVideoProjects(ctx), listProducts(ctx)]);
+  const [projects, products, characters, videoModel, avatarModel] = await Promise.all([listVideoProjects(ctx), listProducts(ctx), listCharacters(ctx), resolveClipModel(ctx, 'video'), resolveClipModel(ctx, 'avatar')]);
   const canEdit = ctx.brandRole !== 'VIEWER';
   const productOptions = products.filter((p) => p.isActive).map((p) => ({ id: p.id, name: p.name }));
   return (
@@ -33,6 +34,14 @@ export default async function VideoPage() {
           </div>
         }
       />
+      {canEdit ? (
+        <AutoVideoForm
+          products={productOptions}
+          characters={characters.map((c) => ({ id: c.id, name: c.name }))}
+          hasVideoProvider={Boolean(videoModel && !videoModel.isMock)}
+          hasAvatarProvider={Boolean(avatarModel && !avatarModel.isMock)}
+        />
+      ) : null}
       {projects.length === 0 ? (
         <EmptyState icon={Clapperboard} title="אין עדיין סרטונים" description="צרו פרויקט, בקשו תסריט, ערכו את הסצנות ורנדרו." action={canEdit ? <CreateVideoDialog products={productOptions} /> : null} />
       ) : (

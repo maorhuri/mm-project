@@ -33,7 +33,7 @@ export function CreateVideoDialog({ products }: { products: { id: string; name: 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
-          <Plus /> סרטון חדש
+          <Plus /> פרויקט ידני
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">

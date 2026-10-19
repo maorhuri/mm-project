@@ -67,6 +67,16 @@ export function runCopyQa(copy: CopyFields, packet: Pick<FactsPacket, 'forbidden
       }
     }
 
+    // A price field / layer carries a price even without a currency sign ("49", "49.90").
+    if (/price|מחיר/i.test(field) && !new RegExp(PRICE_RE.source, 'i').test(text)) {
+      for (const m of text.matchAll(/\d+(?:[.,]\d+)?/g)) {
+        const value = Number(m[0].replace(',', '.'));
+        if (!packet.verifiedPrices.some((p) => Math.abs(p - value) < 0.005)) {
+          findings.push({ rule: 'unverified_price', severity: 'BLOCK', field, text: m[0], reason: 'מחיר שאינו מופיע במוצרים המאומתים' });
+        }
+      }
+    }
+
     for (const m of text.matchAll(PERCENT_RE)) {
       if (!packetNorm.includes(`${m[1]}%`) && !packetNorm.includes(`${m[1]} %`)) {
         findings.push({ rule: 'unverified_percent', severity: 'WARN', field, text: m[0], reason: 'אחוז שאינו מופיע במידע המאושר' });

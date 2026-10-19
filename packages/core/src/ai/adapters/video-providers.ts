@@ -70,6 +70,8 @@ export class GoogleVeoAdapter implements VideoAdapter {
           durationSeconds: seconds,
           ...(req.resolution && (spec.capabilities.resolutions ?? []).includes(req.resolution) ? { resolution: req.resolution } : {}),
           ...(req.negativePrompt ? { negativePrompt: req.negativePrompt } : {}),
+          // Image-to-video and reference images only accept "allow_adult" (and EU/UK/CH/MENA requests only that value).
+          ...(start || useRefs ? { personGeneration: 'allow_adult' } : {}),
           ...(useRefs
             ? {
                 referenceImages: req.referenceImages!.slice(0, spec.capabilities.referenceImages).map((img) => ({
@@ -138,9 +140,63 @@ export function realVideoAdapter(provider: AiProviderId, apiKey: string): VideoA
   }
 }
 
+function falError(err: unknown): AiProviderError {
+  if (err instanceof AiProviderError) return err;
+  const status = (err as { status?: number }).status;
+  const body = (err as { body?: { detail?: unknown } }).body;
+  const detail = body?.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : err instanceof Error ? err.message : String(err);
+  const retryable = status === 429 || (typeof status === 'number' && status >= 500);
+  return new AiProviderError('fal', `fal.ai: ${detail.slice(0, 400)}`, { status: status === 429 ? 429 : 502, retryable });
+}
+
+/** Kling AI Avatar (via fal.ai): character image + our narration → lip-synced talking video. */
+export class FalAvatarAdapter implements AvatarAdapter {
+  readonly provider = 'fal' as const;
+  readonly isMock = false;
+  constructor(private readonly apiKey: string) {}
+
+  async generate(spec: ModelSpec, req: TalkingAvatarRequest, opts: VideoJobOptions = {}): Promise<VideoClipResult> {
+    const started = Date.now();
+    const { createFalClient } = await import('@fal-ai/client');
+    const fal = createFalClient({ credentials: this.apiKey });
+    try {
+      // The avatar follows the framing of the input image: crop it to the output aspect first.
+      const target = req.aspect === '16:9' ? { width: 1920, height: 1080 } : req.aspect === '1:1' ? { width: 1080, height: 1080 } : { width: 1080, height: 1920 };
+      const image = await sharp(req.image.data, { failOn: 'error' }).resize({ ...target, fit: 'cover', position: 'attention' }).png().toBuffer();
+      const [imageUrl, audioUrl] = await Promise.all([
+        fal.storage.upload(new Blob([new Uint8Array(image)], { type: 'image/png' })),
+        fal.storage.upload(new Blob([new Uint8Array(req.audio.data)], { type: req.audio.mimeType })),
+      ]);
+      let polls = 0;
+      const result = await fal.subscribe(spec.modelId, {
+        input: { image_url: imageUrl, audio_url: audioUrl, ...(req.prompt ? { prompt: req.prompt } : {}) },
+        pollInterval: 5_000,
+        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        onQueueUpdate: (update: { status: string }) => {
+          polls += 1;
+          opts.onProgress?.(update.status === 'IN_QUEUE' ? 5 : Math.min(90, 10 + polls * 4), update.status.toLowerCase());
+        },
+      } as never);
+      const url = (result.data as { video?: { url?: string } }).video?.url;
+      if (!url) throw new AiProviderError('fal', 'fal.ai: no video in the response', { retryable: false });
+      const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+      if (!res.ok) throw new AiProviderError('fal', `fal.ai: download failed (HTTP ${res.status})`, { retryable: true });
+      const video = Buffer.from(await res.arrayBuffer());
+      opts.onProgress?.(100, 'done');
+      return { video, mimeType: 'video/mp4', seconds: Math.round((req.audio.durationMs / 1000) * 10) / 10, hasAudio: true, modelId: spec.modelId, jobId: result.requestId ?? null, latencyMs: Date.now() - started };
+    } catch (err) {
+      throw falError(err);
+    }
+  }
+}
+
 export function realAvatarAdapter(provider: AiProviderId, apiKey: string): AvatarAdapter {
-  void apiKey;
-  throw new AiProviderError(provider, `${provider}: talking avatars are not supported by this provider`, { status: 400 });
+  switch (provider) {
+    case 'fal':
+      return new FalAvatarAdapter(apiKey);
+    default:
+      throw new AiProviderError(provider, `${provider}: talking avatars are not supported by this provider`, { status: 400 });
+  }
 }
 
 export type { TalkingAvatarRequest };

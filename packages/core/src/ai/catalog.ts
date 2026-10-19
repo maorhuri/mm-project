@@ -6,7 +6,7 @@
  * models and prices without a deploy.
  */
 
-export type AiProviderId = 'openai' | 'anthropic' | 'google';
+export type AiProviderId = 'openai' | 'anthropic' | 'google' | 'fal';
 export type AiModelKind = 'text' | 'image' | 'tts' | 'video' | 'avatar';
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type AiTier = 'flagship' | 'balanced' | 'economy';
@@ -243,12 +243,80 @@ export const MODEL_CATALOG: ModelSpec[] = [
     verifiedAt: '2026-10-15',
     source: 'https://ai.google.dev/gemini-api/docs/pricing',
   },
+  // --- Google Veo 3.1 (motion clips, native audio) — verified 2026-10-19 ---------------------
+  // All clips are requested at 1080p, which Veo only renders as 8-second clips.
+  {
+    provider: 'google',
+    modelId: 'veo-3.1-generate-preview',
+    kind: 'video',
+    tier: 'flagship',
+    displayName: 'Veo 3.1',
+    pricing: { usdPerSecond: 0.4, usdPerSecondWithAudio: 0.4 },
+    capabilities: { durations: [8], aspects: ['9:16', '16:9'], resolutions: ['1080p'], imageInput: true, referenceImages: 3, nativeAudio: true },
+    qualityRank: 97,
+    verifiedAt: '2026-10-19',
+    source: 'https://ai.google.dev/gemini-api/docs/veo',
+    notes: '$0.40/s at 720p and 1080p, $0.60/s at 4K (pricing page). Audio is always generated.',
+  },
+  {
+    provider: 'google',
+    modelId: 'veo-3.1-fast-generate-preview',
+    kind: 'video',
+    tier: 'balanced',
+    displayName: 'Veo 3.1 Fast',
+    pricing: { usdPerSecond: 0.12, usdPerSecondWithAudio: 0.12 },
+    capabilities: { durations: [8], aspects: ['9:16', '16:9'], resolutions: ['1080p'], imageInput: true, referenceImages: 3, nativeAudio: true },
+    qualityRank: 90,
+    verifiedAt: '2026-10-19',
+    source: 'https://ai.google.dev/gemini-api/docs/pricing',
+    notes: '$0.10/s at 720p, $0.12/s at 1080p, $0.30/s at 4K.',
+  },
+  {
+    provider: 'google',
+    modelId: 'veo-3.1-lite-generate-preview',
+    kind: 'video',
+    tier: 'economy',
+    displayName: 'Veo 3.1 Lite',
+    pricing: { usdPerSecond: 0.08, usdPerSecondWithAudio: 0.08 },
+    capabilities: { durations: [8], aspects: ['9:16', '16:9'], resolutions: ['1080p'], imageInput: true, referenceImages: 0, nativeAudio: true },
+    qualityRank: 80,
+    verifiedAt: '2026-10-19',
+    source: 'https://ai.google.dev/gemini-api/docs/pricing',
+    notes: '$0.05/s at 720p, $0.08/s at 1080p. No reference images.',
+  },
+  // --- fal.ai — Kling AI Avatar v2 (image + our audio → lip-synced talking video) ----------
+  {
+    provider: 'fal',
+    modelId: 'fal-ai/kling-video/ai-avatar/v2/pro',
+    kind: 'avatar',
+    tier: 'flagship',
+    displayName: 'Kling AI Avatar v2 Pro',
+    pricing: { usdPerSecond: 0.115 },
+    capabilities: { aspects: ['9:16', '16:9', '1:1'], imageInput: true },
+    qualityRank: 95,
+    verifiedAt: '2026-10-19',
+    source: 'https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/pro',
+    notes: 'Output length follows the audio file. Lip-sync is driven by the audio, so any language works.',
+  },
+  {
+    provider: 'fal',
+    modelId: 'fal-ai/kling-video/ai-avatar/v2/standard',
+    kind: 'avatar',
+    tier: 'balanced',
+    displayName: 'Kling AI Avatar v2 Standard',
+    pricing: { usdPerSecond: 0.0562 },
+    capabilities: { aspects: ['9:16', '16:9', '1:1'], imageInput: true },
+    qualityRank: 88,
+    verifiedAt: '2026-10-19',
+    source: 'https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard',
+  },
 ];
 
 export const PROVIDER_LABELS: Record<AiProviderId, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   google: 'Google AI (Gemini)',
+  fal: 'fal.ai',
 };
 
 /** Snap a wanted duration to the model's allowed durations (smallest ≥ wanted, else the longest). */

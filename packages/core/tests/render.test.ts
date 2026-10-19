@@ -82,7 +82,12 @@ describe.skipIf(!enabled)('motion video pipeline (Chromium + FFmpeg, mock clip p
       const faceAsset = await uploadMedia(ctx, { data: face, originalName: 'robot.png', mimeType: 'image/png' });
       const robot = await createCharacter(ctx, { name: 'רובי', description: 'blue robot', imageMediaId: faceAsset.id, voice: 'nova' });
 
+      const musicFile = path.join(dir, 'music.mp3');
+      await ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=4', '-c:a', 'libmp3lame', '-q:a', '6', musicFile]);
+      const musicAsset = await uploadMedia(ctx, { data: await readFile(musicFile), originalName: 'music.mp3', mimeType: 'audio/mpeg' });
       const project = await createVideoProject(ctx, { title: 'רילס תנועה', aspect: 'R9X16', voice: 'alloy' });
+      const { updateVideoSettings } = await import('../src/services/video');
+      await updateVideoSettings(ctx, project.id, { voice: 'alloy', motionStills: true, videoTier: 'balanced', ambientAudio: true, transitions: true, musicMediaId: musicAsset.id, musicVolume: 18 });
       const { scenes } = await generateVideoScript(ctx, project.id, { sceneCount: 2, targetSeconds: 10 });
       await updateVideoScene(ctx, scenes[0]!.id, { narration: 'מעבירים אתר? בקלות ובמהירות', onScreenText: 'מעבירים אתר?', visualKind: 'MEDIA_VIDEO', mediaId: libVideo.id });
       await updateVideoScene(ctx, scenes[1]!.id, { narration: 'שלום, אני רובי מהצוות', onScreenText: 'רובי', visualKind: 'AVATAR', characterId: robot.id });
@@ -104,8 +109,9 @@ describe.skipIf(!enabled)('motion video pipeline (Chromium + FFmpeg, mock clip p
       expect(info.width).toBe(1080);
       expect(info.height).toBe(1920);
       const after = await db.videoScene.findMany({ where: { projectId: project.id }, orderBy: { order: 'asc' } });
-      const total = after.reduce((n, s) => n + (s.durationMs ?? 0), 0);
-      expect(Math.abs(info.durationMs - total)).toBeLessThan(600);
+      // Scenes overlap by the 350 ms cross-fade.
+      const total = after.reduce((n, s) => n + (s.durationMs ?? 0), 0) - (after.length - 1) * 350;
+      expect(Math.abs(info.durationMs - total)).toBeLessThan(300);
       expect(after[1]!.clipMediaId).toBeTruthy(); // avatar clip stored
       expect(after.find((s) => s.id === third.id)!.clipMediaId).toBeTruthy(); // AI clip stored
       expect(after.every((s) => s.renderedImageId)).toBe(true);

@@ -186,7 +186,7 @@ export const brandImportApplySchema = z.object({
   sourceUrl: httpUrlSchema.optional(),
 });
 
-export const aiProviderIdSchema = z.enum(['openai', 'anthropic', 'google']);
+export const aiProviderIdSchema = z.enum(['openai', 'anthropic', 'google', 'fal']);
 
 export const providerCredentialsSchema = z.object({
   provider: aiProviderIdSchema,
@@ -341,7 +341,19 @@ export const videoProjectSchema = z.object({
 export const videoScriptRequestSchema = z.object({
   sceneCount: z.coerce.number().int().min(2).max(8).default(5),
   targetSeconds: z.coerce.number().int().min(10).max(90).default(30),
-  extra: optionalText(1000),
+  extra: optionalText(2000),
+  defaultKind: z.enum(['CARD', 'AI_IMAGE', 'AI_VIDEO']).optional(),
+});
+
+export const autoVideoSchema = z.object({
+  brief: z.string().trim().min(8, 'תארו בכמה מילים על מה הסרטון').max(1500),
+  aspect: z.enum(['R9X16', 'R1X1', 'R4X5', 'R16X9']).default('R9X16'),
+  productId: z.string().uuid().nullable().optional(),
+  characterId: z.string().uuid().nullable().optional(),
+  sceneCount: z.coerce.number().int().min(3).max(8).default(5),
+  targetSeconds: z.coerce.number().int().min(15).max(60).default(30),
+  videoTier: z.enum(['economy', 'balanced', 'flagship']).default('flagship'),
+  voice: z.string().max(20).optional(),
 });
 
 export const sceneVisualKindSchema = z.enum(['CARD', 'MEDIA', 'AI_IMAGE', 'MEDIA_VIDEO', 'AI_VIDEO', 'AVATAR']);
@@ -363,6 +375,9 @@ export const videoSettingsSchema = z.object({
   motionStills: z.boolean(),
   videoTier: videoTierSchema,
   ambientAudio: z.boolean(),
+  transitions: z.boolean(),
+  musicMediaId: z.string().uuid().nullable().optional(),
+  musicVolume: z.coerce.number().int().min(0).max(100).default(18),
 });
 
 export const characterSchema = z.object({
