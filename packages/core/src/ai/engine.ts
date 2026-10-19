@@ -41,7 +41,8 @@ export async function getAiUsage(ctx: BrandContext): Promise<AiUsage> {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const rows = await ctx.db.aiRun.findMany({
-    where: { createdAt: { gte: start }, status: { in: ['SUCCEEDED', 'RUNNING'] } },
+    // Every row that carries a cost counts (succeeded, running, or interrupted after the provider may have billed).
+    where: { createdAt: { gte: start }, OR: [{ status: { in: ['SUCCEEDED', 'RUNNING'] } }, { costIls: { gt: 0 } }] },
     select: { provider: true, task: true, costIls: true },
   });
   const byProvider: Record<string, number> = {};
@@ -631,6 +632,16 @@ export async function estimateClipCost(ctx: BrandContext, kind: 'video' | 'avata
   } catch {
     return { ils: 0, modelId: null, provider: null, isMock: false };
   }
+}
+
+/** Worker start: calls left RUNNING by a restart are closed; their estimated cost stays in the budget. */
+export async function closeInterruptedRuns(olderThanMs = 30 * 60_000): Promise<number> {
+  const { db } = await import('@mm/db');
+  const res = await db.aiRun.updateMany({
+    where: { status: 'RUNNING', createdAt: { lt: new Date(Date.now() - olderThanMs) } },
+    data: { status: 'FAILED', error: 'נקטע בהפעלה מחדש של השרת — ייתכן שהספק חייב; העלות המשוערת נשארת בתקציב' },
+  });
+  return res.count;
 }
 
 export interface AiRunRow extends AiRun {

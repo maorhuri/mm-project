@@ -155,7 +155,7 @@ ExecStart=/usr/local/bin/node /opt/mm-marketing/current/apps/worker/dist/index.j
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
-TimeoutStopSec=30
+TimeoutStopSec=25min
 SyslogIdentifier=mm-worker
 
 [Install]

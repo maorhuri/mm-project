@@ -15,6 +15,7 @@ import {
   getQueue,
   getRedisConnection,
   autopilotAfterCreative,
+  closeInterruptedRuns,
   autopilotAfterVideo,
   listAutopilotBrandIds,
   listMetaConnectedBrandIds,
@@ -203,6 +204,8 @@ async function main(): Promise<void> {
   logger.info({ env: cfg.NODE_ENV, queues: Object.values(QUEUES) }, 'worker starting');
 
   await db.$queryRaw`SELECT 1`;
+  const interrupted = await closeInterruptedRuns().catch(() => 0);
+  if (interrupted) logger.warn({ interrupted }, 'closed AI runs interrupted by a restart');
   // Render smoke: report (never block) whether Chromium can launch on this host.
   void isChromiumAvailable().then((ok) => logger.info({ chromium: ok }, ok ? 'render smoke OK' : 'render smoke FAILED — creative/video renders will fail until Chromium is installed'));
   const workers = (Object.values(QUEUES) as QueueName[]).map(makeWorker);

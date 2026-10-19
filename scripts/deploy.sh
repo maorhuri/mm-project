@@ -89,7 +89,10 @@ log "activate"
 chown -R "$APP_USER:$APP_USER" "$REL"
 ACTIVATED=1
 switch_current "$REL"
-systemctl restart mm-web mm-worker
+systemctl restart mm-web
+# The worker finishes its current job first (renders can take minutes; TimeoutStopSec=25min),
+# then starts on the new release — don't block the deploy on it.
+systemctl restart --no-block mm-worker
 healthy
 echo "$SHA" > "$SHARED/deployed_sha"
 rm -f "$SHARED/failed_sha"
