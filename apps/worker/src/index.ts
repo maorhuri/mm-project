@@ -14,7 +14,11 @@ import {
   getConfig,
   getQueue,
   getRedisConnection,
+  autopilotAfterCreative,
+  autopilotAfterVideo,
+  listAutopilotBrandIds,
   listMetaConnectedBrandIds,
+  runAutopilotCycle,
   publishDuePosts,
   logger,
   renderCreativeVersion,
@@ -62,11 +66,27 @@ const systemProcessors: Record<string, Processor> = {
 // ---------------------------------------------------------------------------
 
 const contentProcessors: Record<string, Processor> = {
+  [JOBS.autopilot]: async (job) => {
+    const data = (job.data ?? {}) as Record<string, unknown>;
+    const brandIds = typeof data.brandId === 'string' ? [data.brandId] : await listAutopilotBrandIds();
+    const results: Record<string, unknown> = {};
+    for (const brandId of brandIds) {
+      try {
+        const ctx = await systemBrandContext(brandId, typeof data.actorUserId === 'string' ? data.actorUserId : null);
+        results[brandId] = await runAutopilotCycle(ctx, { force: data.force === true });
+      } catch (err) {
+        results[brandId] = `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
+        logger.warn({ err, brandId }, 'autopilot cycle failed');
+      }
+    }
+    return results;
+  },
   [JOBS.creativeRender]: async (job) => {
     const data = (job.data ?? {}) as Record<string, unknown>;
     const ctx = await systemBrandContext(jobString(data, 'brandId'), typeof data.actorUserId === 'string' ? data.actorUserId : null);
     const version = await renderCreativeVersion(ctx, jobString(data, 'versionId'), renderBackend);
-    return { versionId: version.id, renderStatus: version.renderStatus, png: version.renderedPngId };
+    const scheduled = await autopilotAfterCreative(ctx, version);
+    return { versionId: version.id, renderStatus: version.renderStatus, png: version.renderedPngId, scheduled };
   },
 };
 
@@ -75,7 +95,8 @@ const videoProcessors: Record<string, Processor> = {
     const data = (job.data ?? {}) as Record<string, unknown>;
     const ctx = await systemBrandContext(jobString(data, 'brandId'), typeof data.actorUserId === 'string' ? data.actorUserId : null);
     const project = await renderVideoProject(ctx, jobString(data, 'projectId'), renderBackend);
-    return { projectId: project.id, status: project.status, durationMs: project.durationMs, outputMediaId: project.outputMediaId };
+    const scheduled = await autopilotAfterVideo(ctx, project);
+    return { projectId: project.id, status: project.status, durationMs: project.durationMs, outputMediaId: project.outputMediaId, scheduled };
   },
 };
 
@@ -169,6 +190,8 @@ async function scheduleRecurringJobs(): Promise<void> {
     { pattern: '0 4 * * *', tz: 'Asia/Jerusalem' },
     { name: JOBS.cleanupSessions },
   );
+  // Content autopilot: one creative cycle per day, before people start approving.
+  await getQueue(QUEUES.content).upsertJobScheduler(JOBS.autopilot, { pattern: '0 7 * * *', tz: 'Asia/Jerusalem' }, { name: JOBS.autopilot });
   // Publishing: approved posts go out within a minute of their time.
   await getQueue(QUEUES.publishing).upsertJobScheduler(JOBS.publishDue, { every: 60_000 }, { name: JOBS.publishDue });
   // Meta ads mirror: once a night (insights for yesterday are final by then); manual syncs come from the UI.

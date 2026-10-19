@@ -21,6 +21,7 @@ export const JOBS = {
   videoRender: 'video.render',
   metaSync: 'ads.sync-meta',
   publishDue: 'publishing.dispatch-due',
+  autopilot: 'content.autopilot',
 } as const;
 
 let connection: IORedis | undefined;

@@ -1014,6 +1014,7 @@ registerApprovalHandler('video_project', async (ctx, approval) => {
 
 export interface AutoProduceInput {
   brief: string;
+  title?: string;
   aspect: VideoProject['aspect'];
   productId?: string | null;
   characterId?: string | null;
@@ -1032,7 +1033,13 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
   assertBrandRole(ctx, 'EDITOR');
   const character = input.characterId ? await ctx.db.brandCharacter.findUnique({ where: { id: input.characterId } }) : null;
   if (input.characterId && (!character || !character.isActive)) throw new ValidationError('הדמות לא נמצאה', [{ path: 'characterId', message: 'לא נמצאה' }]);
-  const title = input.brief.replace(/\s+/g, ' ').trim().slice(0, 60) || 'סרטון';
+  if (!input.brief.trim()) {
+    const { generateConcept } = await import('./autopilot');
+    const concept = await generateConcept(ctx, 'video');
+    input = { ...input, brief: `${concept.hook ? `${concept.hook}\n` : ''}${concept.brief}`, productId: input.productId ?? concept.productId };
+    input.title = concept.title;
+  }
+  const title = (input.title ?? input.brief.replace(/\s+/g, ' ').trim()).slice(0, 60) || 'סרטון';
   const project = await createVideoProject(ctx, { title, goal: input.brief.slice(0, 500), productId: input.productId ?? null, aspect: input.aspect, voice: (input.voice ?? 'alloy') as VideoProjectInput['voice'] });
   await ctx.db.videoProject.update({ where: { id: project.id }, data: { videoTier: input.videoTier, motionStills: true, transitions: true } });
   const tier = input.videoTier as AiTier;

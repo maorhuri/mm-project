@@ -346,7 +346,8 @@ export const videoScriptRequestSchema = z.object({
 });
 
 export const autoVideoSchema = z.object({
-  brief: z.string().trim().min(8, 'תארו בכמה מילים על מה הסרטון').max(1500),
+  /** Empty = the creative director invents the concept. */
+  brief: z.string().trim().max(1500).default(''),
   aspect: z.enum(['R9X16', 'R1X1', 'R4X5', 'R16X9']).default('R9X16'),
   productId: z.string().uuid().nullable().optional(),
   characterId: z.string().uuid().nullable().optional(),

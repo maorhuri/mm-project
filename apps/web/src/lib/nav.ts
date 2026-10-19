@@ -33,6 +33,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: '/app', label: 'סקירה', icon: LayoutDashboard },
   { href: '/app/brands', label: 'מותגים', icon: Palette },
+  { href: '/app/autopilot', label: 'טייס אוטומטי', icon: Bot },
   { href: '/app/strategy', label: 'אסטרטגיית AI', icon: Sparkles },
   { href: '/app/creative', label: 'סטודיו קריאייטיב', icon: Lightbulb },
   { href: '/app/video', label: 'סטודיו וידאו', icon: Clapperboard },

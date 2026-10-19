@@ -214,6 +214,8 @@ model BrandSettings {
   /// Monthly content targets, e.g. { marketingPosts: 6, professionalPosts: 4, securityPosts: 2, reels: 4 }
   contentTargets     Json           @default("{}") @map("content_targets")
   monthlyAdBudgetIls Decimal?       @map("monthly_ad_budget_ils") @db.Decimal(12, 2)
+  /// Content autopilot: { enabled, videosPerWeek, imagePostsPerWeek, channels, tier, characterId, postHour }
+  autopilot          Json           @default("{}")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
@@ -726,6 +728,8 @@ model CreativeProject {
   audience         String?
   style            String?
   currentVersionId String?         @map("current_version_id") @db.Uuid
+  /// manual | autopilot
+  origin           String          @default("manual")
   createdById      String?         @map("created_by_id") @db.Uuid
   createdAt        DateTime        @default(now()) @map("created_at")
   updatedAt        DateTime        @updatedAt @map("updated_at")
@@ -848,6 +852,8 @@ model VideoProject {
   factsHash        String?     @map("facts_hash")
   /// Subtle zoom/pan ("Ken Burns") on still scenes
   motionStills     Boolean     @default(true) @map("motion_stills")
+  /// manual | autopilot
+  origin           String      @default("manual")
   /// Model tier for AI video clips / avatars: economy | balanced | flagship
   videoTier        String      @default("balanced") @map("video_tier")
   /// Keep the video model's native sound (mixed low under the narration)

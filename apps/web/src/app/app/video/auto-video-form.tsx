@@ -36,8 +36,8 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
       </CardHeader>
       <CardContent>
         <form key={formKey(state)} action={action} className="grid gap-3 md:grid-cols-4">
-          <Field label="על מה הסרטון?" name="brief" error={fieldError(state, 'brief')} className="md:col-span-4">
-            <Textarea id="brief" name="brief" rows={3} required minLength={8} defaultValue={formValue(state, 'brief', '')} placeholder="למשל: רילס שמציג מעבר אתר וורדפרס לשרתים שלנו בלי השבתה, טון אנרגטי, סיום בהצעה לייעוץ חינם" />
+          <Field label="על מה הסרטון? (אופציונלי)" name="brief" error={fieldError(state, 'brief')} className="md:col-span-4">
+            <Textarea id="brief" name="brief" rows={3} defaultValue={formValue(state, 'brief', '')} placeholder="אפשר להשאיר ריק — מנהל הקריאייטיב של המערכת ימציא קונספט חדש לפי המותג. או כתבו רעיון משלכם." />
           </Field>
           <Field label="פורמט" name="aspect" error={fieldError(state, 'aspect')}>
             <Select id="aspect" name="aspect" defaultValue={formValue(state, 'aspect', 'R9X16')}>
