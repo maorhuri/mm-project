@@ -284,3 +284,23 @@ describe('one-click production', () => {
     expect(detail.scenes.every((s) => s.characterId === robot.id)).toBe(true);
   });
 });
+
+describe('fal-only video routing', () => {
+  it('routes motion clips and talking characters to Kling on fal, priced per second', async () => {
+    const { owner, org, brandA } = await twoBrandFixture();
+    const ctx = await ctxFor(owner, brandA.id);
+    const { saveProviderCredentials } = await import('../src/services/provider-credentials');
+    const { resolveClipModel, estimateClipCost } = await import('../src/ai/engine');
+    await saveProviderCredentials(owner, org.id, 'fal', { apiKey: 'fal-test-key:not-real-123' });
+    const flagship = await resolveClipModel(ctx, 'video', 'flagship');
+    expect(flagship?.spec.modelId).toBe('fal-ai/kling-video/v3/pro/image-to-video');
+    expect(flagship?.isMock).toBe(false);
+    expect((await resolveClipModel(ctx, 'video', 'balanced'))?.spec.modelId).toBe('fal-ai/kling-video/v3/standard/image-to-video');
+    expect((await resolveClipModel(ctx, 'avatar', 'flagship'))?.spec.modelId).toBe('fal-ai/kling-video/ai-avatar/v2/pro');
+    // Kling takes any whole-second length from 3 to 15: a 6.4 s scene is billed as 7 s.
+    const cost = await estimateClipCost(ctx, 'video', 6.4, { tier: 'flagship' });
+    expect(cost.ils).toBeCloseTo(7 * 0.112 * 3.7, 3);
+    const withAudio = await estimateClipCost(ctx, 'video', 6.4, { tier: 'flagship', withAudio: true });
+    expect(withAudio.ils).toBeCloseTo(7 * 0.168 * 3.7, 3);
+  });
+});

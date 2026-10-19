@@ -62,9 +62,8 @@ const KIND_OPTIONS: { value: VideoScene['visualKind']; label: string }[] = [
 ];
 
 const TIERS = [
-  { value: 'economy', label: 'חסכוני — מהיר וזול' },
-  { value: 'balanced', label: 'מאוזן (מומלץ)' },
-  { value: 'flagship', label: 'פרימיום — האיכות הגבוהה ביותר' },
+    { value: 'balanced', label: 'מאוזן — Kling 3.0 Standard' },
+  { value: 'flagship', label: 'פרימיום לפרסום — Kling 3.0 Pro' },
 ];
 
 export function VideoWorkspace({ brandId, canEdit, project, scenes, product, estimate, characters, images, videos, musicOptions, singleRunCapIls }: Props) {
@@ -237,7 +236,7 @@ export function VideoWorkspace({ brandId, canEdit, project, scenes, product, est
               ) : null}
               {estimate.videoProviderMissing ? (
                 <p className="text-xs text-destructive">
-                  לסצנות &quot;וידאו AI&quot; נדרש מפתח Google Gemini (Veo). <Link href="/app/integrations" className="underline">לאינטגרציות</Link>
+                  לסצנות &quot;וידאו AI&quot; נדרש מפתח fal.ai (Kling). <Link href="/app/integrations" className="underline">לאינטגרציות</Link>
                 </p>
               ) : null}
               {estimate.avatarProviderMissing ? (

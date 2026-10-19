@@ -135,8 +135,61 @@ export class GoogleVeoAdapter implements VideoAdapter {
   }
 }
 
+/** Kling 3.0 image-to-video (via fal.ai): start image (+ optional character element) → motion clip. */
+export class FalKlingVideoAdapter implements VideoAdapter {
+  readonly provider = 'fal' as const;
+  readonly isMock = false;
+  constructor(private readonly apiKey: string) {}
+
+  async generate(spec: ModelSpec, req: VideoClipRequest, opts: VideoJobOptions = {}): Promise<VideoClipResult> {
+    const started = Date.now();
+    if (!req.image) throw new AiProviderError('fal', 'fal.ai: Kling image-to-video needs a start image', { status: 400, retryable: false });
+    const seconds = snapDuration(spec, req.seconds);
+    const { createFalClient } = await import('@fal-ai/client');
+    const fal = createFalClient({ credentials: this.apiKey });
+    try {
+      // The clip keeps the framing of the start image: crop it to the output aspect first.
+      const target = req.aspect === '16:9' ? { width: 1920, height: 1080 } : req.aspect === '1:1' ? { width: 1440, height: 1440 } : { width: 1080, height: 1920 };
+      const start = await sharp(req.image.data, { failOn: 'error' }).resize({ ...target, fit: 'cover', position: 'attention' }).png().toBuffer();
+      const upload = (data: Buffer, type: string) => fal.storage.upload(new Blob([new Uint8Array(data)], { type }));
+      const startUrl = await upload(start, 'image/png');
+      const refs = (req.referenceImages ?? []).slice(0, Math.min(3, spec.capabilities.referenceImages ?? 0));
+      const refUrls = await Promise.all(refs.map((r) => upload(r.data, r.mimeType)));
+      const prompt = refUrls.length ? `${req.prompt} The main character is @Element1 and must look exactly like the reference.` : req.prompt;
+      let polls = 0;
+      const result = await fal.subscribe(spec.modelId, {
+        input: {
+          prompt: prompt.slice(0, 2500),
+          start_image_url: startUrl,
+          duration: String(seconds),
+          generate_audio: Boolean(req.audio),
+          ...(req.negativePrompt ? { negative_prompt: req.negativePrompt } : {}),
+          ...(refUrls.length ? { elements: [{ frontal_image_url: refUrls[0], reference_image_urls: refUrls }] } : {}),
+        },
+        pollInterval: 5_000,
+        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        onQueueUpdate: (update: { status: string }) => {
+          polls += 1;
+          opts.onProgress?.(update.status === 'IN_QUEUE' ? 5 : Math.min(90, 10 + polls * 3), update.status.toLowerCase());
+        },
+      } as never);
+      const url = (result.data as { video?: { url?: string } }).video?.url;
+      if (!url) throw new AiProviderError('fal', 'fal.ai: no video in the response', { retryable: false });
+      const res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+      if (!res.ok) throw new AiProviderError('fal', `fal.ai: download failed (HTTP ${res.status})`, { retryable: true });
+      const video = Buffer.from(await res.arrayBuffer());
+      opts.onProgress?.(100, 'done');
+      return { video, mimeType: 'video/mp4', seconds, hasAudio: Boolean(req.audio), modelId: spec.modelId, jobId: result.requestId ?? null, latencyMs: Date.now() - started };
+    } catch (err) {
+      throw falError(err);
+    }
+  }
+}
+
 export function realVideoAdapter(provider: AiProviderId, apiKey: string): VideoAdapter {
   switch (provider) {
+    case 'fal':
+      return new FalKlingVideoAdapter(apiKey);
     case 'google':
       return new GoogleVeoAdapter(apiKey);
     default:

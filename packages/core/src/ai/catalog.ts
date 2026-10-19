@@ -53,6 +53,10 @@ export interface ModelSpec {
     nativeAudio?: boolean;
     /** Avatar: max seconds of driving audio. */
     maxAudioSeconds?: number;
+    /** Video: a start image is mandatory (image-to-video endpoint). */
+    requiresStartImage?: boolean;
+    /** Video: reference images can be combined with a start image. */
+    referenceWithStart?: boolean;
   };
   /** Routing hints: higher = preferred for quality-sensitive tasks. */
   qualityRank: number;
@@ -283,6 +287,33 @@ export const MODEL_CATALOG: ModelSpec[] = [
     verifiedAt: '2026-10-19',
     source: 'https://ai.google.dev/gemini-api/docs/pricing',
     notes: '$0.05/s at 720p, $0.08/s at 1080p. No reference images.',
+  },
+  // --- fal.ai — Kling 3.0 image-to-video (motion clips) — verified 2026-10-19 ---------------
+  {
+    provider: 'fal',
+    modelId: 'fal-ai/kling-video/v3/pro/image-to-video',
+    kind: 'video',
+    tier: 'flagship',
+    displayName: 'Kling 3.0 Pro',
+    pricing: { usdPerSecond: 0.112, usdPerSecondWithAudio: 0.168 },
+    capabilities: { durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], aspects: ['9:16', '16:9', '1:1'], imageInput: true, requiresStartImage: true, referenceImages: 3, referenceWithStart: true, nativeAudio: true },
+    qualityRank: 96,
+    verifiedAt: '2026-10-19',
+    source: 'https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video',
+    notes: '$0.112/s audio off, $0.168/s audio on. Native voice is Chinese/English only — we keep our own Hebrew narration.',
+  },
+  {
+    provider: 'fal',
+    modelId: 'fal-ai/kling-video/v3/standard/image-to-video',
+    kind: 'video',
+    tier: 'balanced',
+    displayName: 'Kling 3.0 Standard',
+    pricing: { usdPerSecond: 0.084, usdPerSecondWithAudio: 0.126 },
+    capabilities: { durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], aspects: ['9:16', '16:9', '1:1'], imageInput: true, requiresStartImage: true, referenceImages: 3, referenceWithStart: true, nativeAudio: true },
+    qualityRank: 90,
+    verifiedAt: '2026-10-19',
+    source: 'https://fal.ai/models/fal-ai/kling-video/v3/standard/image-to-video',
+    notes: '$0.084/s audio off, $0.126/s audio on.',
   },
   // --- fal.ai — Kling AI Avatar v2 (image + our audio → lip-synced talking video) ----------
   {

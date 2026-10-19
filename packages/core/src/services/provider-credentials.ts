@@ -146,7 +146,7 @@ export async function testProviderKey(provider: AiProviderId, apiKey: string, fe
       body = await res.json().catch(() => null);
       if (status === 401) return done(false, [], errorMessage(body, status));
       if (status >= 500) return done(false, [], errorMessage(body, status));
-      return done(true, ['fal-ai/kling-video/ai-avatar/v2/pro', 'fal-ai/kling-video/ai-avatar/v2/standard'], null);
+      return done(true, ['fal-ai/kling-video/v3/pro/image-to-video', 'fal-ai/kling-video/v3/standard/image-to-video', 'fal-ai/kling-video/ai-avatar/v2/pro', 'fal-ai/kling-video/ai-avatar/v2/standard'], null);
     }
     const res = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${encodeURIComponent(apiKey)}`, { headers: {} });
     status = res.status;

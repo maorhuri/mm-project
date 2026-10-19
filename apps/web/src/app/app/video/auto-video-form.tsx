@@ -30,7 +30,7 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
         </CardTitle>
         <CardDescription>
           תארו את הסרטון. המערכת כותבת תסריט פרסומי על בסיס המידע המאושר של המותג, מייצרת כל סצנה
-          {hasVideoProvider ? ' כווידאו AI עם תנועה אמיתית (Veo 3.1)' : ' כתמונת AI עם תנועת מצלמה (לאנימציה אמיתית חברו Google Gemini באינטגרציות)'}
+          {hasVideoProvider ? ' כווידאו AI עם תנועה אמיתית (Kling 3.0)' : ' כתמונת AI עם תנועת מצלמה (לאנימציה אמיתית חברו fal.ai באינטגרציות)'}
           , מוסיפה קריינות, מוזיקה, מעברים וכתוביות — ומתחילה להפיק.
         </CardDescription>
       </CardHeader>
@@ -49,9 +49,8 @@ export function AutoVideoForm({ products, characters, hasVideoProvider, hasAvata
           </Field>
           <Field label="איכות" name="videoTier" error={fieldError(state, 'videoTier')}>
             <Select id="videoTier" name="videoTier" defaultValue={formValue(state, 'videoTier', 'flagship')}>
-              <option value="flagship">פרימיום לפרסום (Veo 3.1)</option>
-              <option value="balanced">מאוזן (Veo 3.1 Fast)</option>
-              <option value="economy">חסכוני (Veo 3.1 Lite)</option>
+              <option value="flagship">פרימיום לפרסום (Kling 3.0 Pro)</option>
+              <option value="balanced">מאוזן (Kling 3.0 Standard)</option>
             </Select>
           </Field>
           <Field label="אורך" name="targetSeconds" error={fieldError(state, 'targetSeconds')}>

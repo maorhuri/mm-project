@@ -198,7 +198,8 @@ export class AiOutputInvalidError extends AppError {
 }
 
 /** Providers that can serve motion clips / talking avatars, in preference order (configured with the catalog). */
-export const VIDEO_PROVIDERS: AiProviderId[] = ['google'];
+/** Owner decision (2026-10-19): video runs on fal.ai only (Kling). Veo stays in the catalog but is not routed. */
+export const VIDEO_PROVIDERS: AiProviderId[] = ['fal'];
 export const AVATAR_PROVIDERS: AiProviderId[] = ['fal'];
 
 export interface TaskDefaults {

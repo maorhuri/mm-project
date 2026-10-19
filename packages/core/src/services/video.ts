@@ -550,7 +550,7 @@ export async function startVideoRender(ctx: BrandContext, projectId: string): Pr
     if (s.visualKind === 'MEDIA_VIDEO' && !s.mediaId) throw new ConflictError(`סצנה ${s.order}: לא נבחר וידאו`);
     if (s.visualKind === 'AVATAR' && (!s.characterId || !activeCharacters.has(s.characterId))) throw new ConflictError(`סצנה ${s.order}: יש לבחור דמות פעילה`);
   }
-  if (estimate.videoProviderMissing) throw new ConflictError('לסצנות "וידאו AI" נדרש ספק וידאו מחובר — הוסיפו מפתח Google Gemini (Veo) בעמוד האינטגרציות');
+  if (estimate.videoProviderMissing) throw new ConflictError('לסצנות "וידאו AI" נדרש ספק וידאו מחובר — הוסיפו מפתח fal.ai (Kling) בעמוד האינטגרציות');
   if (estimate.avatarProviderMissing) throw new ConflictError('לסצנות "דמות מדברת" נדרש ספק lip-sync מחובר — הוסיפו מפתח בעמוד האינטגרציות');
 
   let renderApprovalId: string | null = null;
@@ -832,8 +832,12 @@ export async function renderVideoProject(ctx: BrandContext, projectId: string, b
         if (!clipFile) {
           clipFile = path.join(dir, `scene-${scene.order}-clip.mp4`);
           const model = await resolveClipModel(ctx, 'video', tier);
-          const useReference = !scene.mediaId && character && (model?.spec.capabilities.referenceImages ?? 0) > 0;
-          const startImageId = scene.mediaId ?? (useReference ? null : character ? character.imageMediaId : await ensureSceneImage(rc, scene, cache));
+          const caps = model?.spec.capabilities ?? {};
+          // Kling: start frame AND character reference together. Veo: one or the other.
+          const useReference = Boolean(character && (caps.referenceImages ?? 0) > 0 && (caps.referenceWithStart || !scene.mediaId));
+          const needStart = caps.requiresStartImage || caps.referenceWithStart || !useReference;
+          // With a character, the clip opens on the character itself so it is visible from the first frame.
+          const startImageId = scene.mediaId ?? (needStart ? (character ? character.imageMediaId : await ensureSceneImage(rc, scene, cache)) : null);
           const start = startImageId ? await readMediaBuffer(ctx, startImageId, 25 * 1024 * 1024) : null;
           const reference = useReference && character ? await readMediaBuffer(ctx, character.imageMediaId, 25 * 1024 * 1024) : null;
           const subject = imagePrompt(scene);
@@ -1047,7 +1051,7 @@ export async function autoProduceVideo(ctx: BrandContext, input: AutoProduceInpu
     if (motion === 'AI_VIDEO') await ctx.db.videoScene.updateMany({ where: { projectId: project.id, id: { notIn: ids } }, data: { characterId: character.id } });
   }
   const notes: string[] = [];
-  if (!videoModel) notes.push('אין ספק וידאו מחובר — הסצנות נוצרו כתמונות AI עם תנועת מצלמה. חברו Google Gemini (Veo 3.1) לאנימציה אמיתית');
+  if (!videoModel) notes.push('אין ספק וידאו מחובר — הסצנות נוצרו כתמונות AI עם תנועת מצלמה. חברו fal.ai (Kling 3.0) לאנימציה אמיתית');
   if (character && !avatarModel) notes.push('אין ספק דמויות מדברות — חברו fal.ai לסנכרון שפתיים');
   try {
     await startVideoRender(ctx, project.id);
